@@ -1,0 +1,11 @@
+.dryforge
+node_modules
+.next
+out
+coverage
+.env
+.env.local
+android/.gradle
+android/app/build
+ios/App/Pods
+ios/App/DerivedData
