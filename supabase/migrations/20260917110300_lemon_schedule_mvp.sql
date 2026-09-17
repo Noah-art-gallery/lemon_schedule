@@ -72,6 +72,7 @@ create table public.tasks (
   recurrence text not null default 'none'
     check (recurrence in ('none', 'daily', 'weekly', 'monthly')),
   recurrence_changed_at timestamptz not null default now(),
+  deleted_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (id, owner_id)
@@ -127,7 +128,7 @@ create table public.encouragements (
   reaction text check (reaction in ('lemon', 'clap', 'heart', 'cheer')),
   message text check (char_length(message) between 1 and 120),
   visibility text not null default 'visible'
-    check (visibility in ('visible', 'hidden_by_owner')),
+    check (visibility in ('visible', 'hidden_by_owner', 'deleted_by_author')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (occurrence_id, author_id),
@@ -210,6 +211,29 @@ end;
 $$;
 
 revoke all on function private.set_updated_at() from public, anon, authenticated;
+
+create function private.validate_time_zone()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not exists (
+    select 1 from pg_catalog.pg_timezone_names
+    where name = new.time_zone
+  ) then
+    raise exception 'INVALID_TIME_ZONE' using errcode = '23514';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function private.validate_time_zone() from public, anon, authenticated;
+
+create trigger profile_private_validate_time_zone
+before insert or update of time_zone on public.profile_private
+for each row execute function private.validate_time_zone();
 
 create trigger profiles_set_updated_at before update on public.profiles
 for each row execute function private.set_updated_at();
@@ -361,8 +385,11 @@ using (blocker_id = (select auth.uid()));
 create policy tasks_select_owner_or_friend
 on public.tasks for select to authenticated
 using (
-  owner_id = (select auth.uid())
-  or private.are_connected((select auth.uid()), owner_id)
+  deleted_at is null
+  and (
+    owner_id = (select auth.uid())
+    or private.are_connected((select auth.uid()), owner_id)
+  )
 );
 
 create policy tasks_insert_owner
@@ -371,18 +398,20 @@ with check (owner_id = (select auth.uid()));
 
 create policy tasks_update_owner
 on public.tasks for update to authenticated
-using (owner_id = (select auth.uid()))
-with check (owner_id = (select auth.uid()));
-
-create policy tasks_delete_owner
-on public.tasks for delete to authenticated
-using (owner_id = (select auth.uid()));
+using (owner_id = (select auth.uid()) and deleted_at is null)
+with check (owner_id = (select auth.uid()) and deleted_at is null);
 
 create policy task_occurrences_select_owner_or_friend
 on public.task_occurrences for select to authenticated
 using (
-  owner_id = (select auth.uid())
-  or private.are_connected((select auth.uid()), owner_id)
+  exists (
+    select 1 from public.tasks as active_task
+    where active_task.id = task_id and active_task.deleted_at is null
+  )
+  and (
+    owner_id = (select auth.uid())
+    or private.are_connected((select auth.uid()), owner_id)
+  )
 );
 
 create policy task_occurrences_insert_pending_owner
@@ -393,6 +422,12 @@ with check (
   and completed_at is null
   and first_completed_at is null
   and reopened_at is null
+  and exists (
+    select 1 from public.tasks as active_task
+    where active_task.id = task_id
+      and active_task.owner_id = (select auth.uid())
+      and active_task.deleted_at is null
+  )
 );
 
 create policy completion_events_select_owner
@@ -402,17 +437,15 @@ using (owner_id = (select auth.uid()));
 create policy encouragements_select_visible_participant
 on public.encouragements for select to authenticated
 using (
-  author_id = (select auth.uid())
-  or owner_id = (select auth.uid())
-  or (
-    visibility = 'visible'
-    and private.are_connected((select auth.uid()), owner_id)
+  visibility <> 'deleted_by_author'
+  and (
+    owner_id = (select auth.uid())
+    or (
+      visibility = 'visible'
+      and private.may_encourage(occurrence_id, owner_id)
+    )
   )
 );
-
-create policy encouragements_delete_author
-on public.encouragements for delete to authenticated
-using (author_id = (select auth.uid()));
 
 create policy notifications_select_recipient
 on public.notifications for select to authenticated
@@ -716,6 +749,29 @@ begin
 end;
 $$;
 
+create function public.delete_task(target_task_id bigint)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  current_user_id uuid := (select auth.uid());
+begin
+  if current_user_id is null then
+    raise exception 'AUTH_REQUIRED' using errcode = 'P0001';
+  end if;
+
+  update public.tasks
+  set deleted_at = clock_timestamp()
+  where id = target_task_id
+    and owner_id = current_user_id
+    and deleted_at is null;
+
+  return found;
+end;
+$$;
+
 create function public.complete_occurrence(target_occurrence_id bigint)
 returns jsonb
 language plpgsql
@@ -732,10 +788,12 @@ begin
     raise exception 'AUTH_REQUIRED' using errcode = 'P0001';
   end if;
 
-  select * into selected_occurrence
-  from public.task_occurrences
-  where id = target_occurrence_id
-  for update;
+  select occurrence.* into selected_occurrence
+  from public.task_occurrences as occurrence
+  join public.tasks as active_task on active_task.id = occurrence.task_id
+  where occurrence.id = target_occurrence_id
+    and active_task.deleted_at is null
+  for update of active_task, occurrence;
 
   if not found or selected_occurrence.owner_id <> current_user_id then
     raise exception 'OCCURRENCE_NOT_FOUND' using errcode = 'P0001';
@@ -946,7 +1004,32 @@ begin
 
   update public.encouragements
   set visibility = case when hidden then 'hidden_by_owner' else 'visible' end
-  where id = target_encouragement_id and owner_id = current_user_id;
+  where id = target_encouragement_id
+    and owner_id = current_user_id
+    and visibility <> 'deleted_by_author';
+
+  return found;
+end;
+$$;
+
+create function public.delete_encouragement(target_encouragement_id bigint)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  current_user_id uuid := (select auth.uid());
+begin
+  if current_user_id is null then
+    raise exception 'AUTH_REQUIRED' using errcode = 'P0001';
+  end if;
+
+  update public.encouragements
+  set visibility = 'deleted_by_author'
+  where id = target_encouragement_id
+    and author_id = current_user_id
+    and visibility <> 'deleted_by_author';
 
   return found;
 end;
@@ -958,10 +1041,12 @@ revoke all on function public.cancel_connection_request(bigint) from public, ano
 revoke all on function public.disconnect_friend(uuid) from public, anon;
 revoke all on function public.block_user(uuid) from public, anon;
 revoke all on function public.unblock_user(uuid) from public, anon;
+revoke all on function public.delete_task(bigint) from public, anon;
 revoke all on function public.complete_occurrence(bigint) from public, anon;
 revoke all on function public.reopen_occurrence(bigint) from public, anon;
 revoke all on function public.upsert_encouragement(bigint, text, text) from public, anon;
 revoke all on function public.hide_encouragement(bigint, boolean) from public, anon;
+revoke all on function public.delete_encouragement(bigint) from public, anon;
 
 grant execute on function public.request_connection(text) to authenticated;
 grant execute on function public.respond_connection_request(bigint, boolean) to authenticated;
@@ -969,10 +1054,12 @@ grant execute on function public.cancel_connection_request(bigint) to authentica
 grant execute on function public.disconnect_friend(uuid) to authenticated;
 grant execute on function public.block_user(uuid) to authenticated;
 grant execute on function public.unblock_user(uuid) to authenticated;
+grant execute on function public.delete_task(bigint) to authenticated;
 grant execute on function public.complete_occurrence(bigint) to authenticated;
 grant execute on function public.reopen_occurrence(bigint) to authenticated;
 grant execute on function public.upsert_encouragement(bigint, text, text) to authenticated;
 grant execute on function public.hide_encouragement(bigint, boolean) to authenticated;
+grant execute on function public.delete_encouragement(bigint) to authenticated;
 
 revoke all on table public.profiles from anon, authenticated;
 revoke all on table public.profile_private from anon, authenticated;
@@ -994,10 +1081,13 @@ grant select, update (time_zone) on public.profile_private to authenticated;
 grant select on public.connection_requests to authenticated;
 grant select on public.connections to authenticated;
 grant select on public.blocks to authenticated;
-grant select, insert, update, delete on public.tasks to authenticated;
+grant select on public.tasks to authenticated;
+grant insert (owner_id, title, due_date, due_time, recurrence) on public.tasks to authenticated;
+grant update (title, due_date, due_time, recurrence, recurrence_changed_at)
+  on public.tasks to authenticated;
 grant select, insert on public.task_occurrences to authenticated;
 grant select on public.completion_events to authenticated;
-grant select, delete on public.encouragements to authenticated;
+grant select on public.encouragements to authenticated;
 grant select, update (read_at) on public.notifications to authenticated;
 grant select, insert, delete, update (drawing_path) on public.pets to authenticated;
 grant select on public.pet_unlocks to authenticated;

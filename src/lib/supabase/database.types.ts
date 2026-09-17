@@ -11,9 +11,9 @@ import type {
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
 
 type DbTable<Row, Insert = Partial<Row>, Update = Partial<Insert>> = {
-  Row: Row;
-  Insert: Insert;
-  Update: Update;
+  Row: Row & Record<string, unknown>;
+  Insert: Insert & Record<string, unknown>;
+  Update: Update & Record<string, unknown>;
   Relationships: [];
 };
 
@@ -42,6 +42,7 @@ export interface TaskRow {
   due_time: string | null;
   recurrence: Recurrence;
   recurrence_changed_at: string;
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -191,6 +192,7 @@ export type Database = {
       disconnect_friend: { Args: { friend_id: string }; Returns: boolean };
       block_user: { Args: { target_user_id: string }; Returns: boolean };
       unblock_user: { Args: { target_user_id: string }; Returns: boolean };
+      delete_task: { Args: { target_task_id: number }; Returns: boolean };
       complete_occurrence: {
         Args: { target_occurrence_id: number };
         Returns: Json;
@@ -209,6 +211,10 @@ export type Database = {
       };
       hide_encouragement: {
         Args: { target_encouragement_id: number; hidden: boolean };
+        Returns: boolean;
+      };
+      delete_encouragement: {
+        Args: { target_encouragement_id: number };
         Returns: boolean;
       };
     };

@@ -50,6 +50,8 @@ for (const rpc of [
   "complete_occurrence",
   "reopen_occurrence",
   "upsert_encouragement",
+  "delete_task",
+  "delete_encouragement",
 ]) {
   assert.match(sql, new RegExp(`create function public\\.${rpc}\\(`), `${rpc} RPC missing`);
   assert.match(
@@ -71,6 +73,9 @@ assert.match(
 );
 assert.match(sql, /with \(security_invoker = true\)/, "views must honor caller RLS");
 assert.match(sql, /bucket_id = 'pet-drawings'/, "pet drawings must use a private owner bucket");
+assert.match(sql, /deleted_at timestamptz/, "tasks must support logical deletion");
+assert.match(sql, /'deleted_by_author'/, "encouragement deletion must preserve a tombstone");
+assert.match(sql, /pg_catalog\.pg_timezone_names/, "time zones must be validated as IANA names");
 assert.doesNotMatch(sql, /auth\.role\(\)/, "deprecated auth.role() must not be used");
 
 console.log(
