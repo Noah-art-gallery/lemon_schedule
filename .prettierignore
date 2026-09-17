@@ -1,0 +1,7 @@
+.next
+out
+coverage
+node_modules
+android
+ios
+package-lock.json
