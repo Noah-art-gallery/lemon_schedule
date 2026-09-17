@@ -5,6 +5,7 @@ export const appErrorCodes = [
   "INVALID_INPUT",
   "CONFLICT",
   "RATE_LIMITED",
+  "SUPABASE_NOT_CONFIGURED",
 ] as const;
 
 export type AppErrorCode = (typeof appErrorCodes)[number];
