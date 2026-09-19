@@ -20,6 +20,7 @@
     "test:db": "supabase test db",
     "test:integration": "cross-env RUN_SUPABASE_INTEGRATION=1 vitest run src/lib/supabase/supabase.integration.test.ts",
     "test:e2e": "playwright test",
+    "test:e2e:external": "cross-env PLAYWRIGHT_EXTERNAL_SERVER=1 playwright test",
     "cap:sync": "cap sync",
     "cap:android": "cap open android",
     "cap:ios": "cap open ios"

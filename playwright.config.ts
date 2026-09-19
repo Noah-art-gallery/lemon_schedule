@@ -7,16 +7,19 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: "list",
   use: {
-    baseURL: "http://127.0.0.1:3000",
+    baseURL: "http://localhost:3000",
     trace: "on-first-retry",
   },
   projects: [
-    { name: "mobile-chrome", use: { ...devices["Pixel 7"] } },
-    { name: "desktop-chrome", use: { ...devices["Desktop Chrome"] } },
+    { name: "mobile-chrome", use: { ...devices["Pixel 7"], channel: "chrome" } },
+    { name: "desktop-chrome", use: { ...devices["Desktop Chrome"], channel: "chrome" } },
   ],
-  webServer: {
-    command: "npm run dev",
-    url: "http://127.0.0.1:3000",
-    reuseExistingServer: !process.env.CI,
-  },
+  webServer:
+    process.env.PLAYWRIGHT_EXTERNAL_SERVER === "1"
+      ? undefined
+      : {
+          command: "npm run dev",
+          url: "http://localhost:3000",
+          reuseExistingServer: !process.env.CI,
+        },
 });
