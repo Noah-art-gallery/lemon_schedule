@@ -10,10 +10,7 @@ const integrationEnabled =
 
 const integrationDescribe = integrationEnabled ? describe : describe.skip;
 
-function requireData<T>(result: {
-  data: T;
-  error: { message: string } | null;
-}): NonNullable<T> {
+function requireData<T>(result: { data: T; error: { message: string } | null }): NonNullable<T> {
   if (result.error) {
     throw new Error(result.error.message);
   }
@@ -124,5 +121,69 @@ integrationDescribe("Supabase completion concurrency", () => {
     expect(privateProfile.lemon_points).toBe(1);
     expect(completionEvents).toHaveLength(1);
     expect(friendNotifications).toHaveLength(1);
+  }, 30_000);
+
+  it("never leaves a connection or pending request when block races acceptance", async () => {
+    const requester = createClient<Database>(url!, publishableKey!);
+    const addressee = createClient<Database>(url!, publishableKey!);
+    const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    const requesterAuth = requireData(
+      await requester.auth.signUp({
+        email: `race-requester-${suffix}@example.test`,
+        password: "Lemon-test-1234!",
+        options: { data: { display_name: "Requester", time_zone: "Asia/Seoul" } },
+      }),
+    );
+    const addresseeAuth = requireData(
+      await addressee.auth.signUp({
+        email: `race-addressee-${suffix}@example.test`,
+        password: "Lemon-test-1234!",
+        options: { data: { display_name: "Addressee", time_zone: "Asia/Seoul" } },
+      }),
+    );
+
+    expect(requesterAuth.session).not.toBeNull();
+    expect(addresseeAuth.session).not.toBeNull();
+
+    const addresseeId = addresseeAuth.user!.id;
+    const invite = requireData(
+      await addressee
+        .from("profile_private")
+        .select("invite_code")
+        .eq("user_id", addresseeId)
+        .single(),
+    );
+    const requestId = requireData(
+      await requester.rpc("request_connection", { target_invite_code: invite.invite_code }),
+    );
+
+    await Promise.all([
+      addressee.rpc("respond_connection_request", {
+        target_request_id: requestId,
+        accept_request: true,
+      }),
+      requester.rpc("block_user", { target_user_id: addresseeId }),
+    ]);
+
+    const connections = requireData(
+      await requester.from("connections").select("created_at", { count: "exact" }),
+    );
+    const pendingRequests = requireData(
+      await requester
+        .from("connection_requests")
+        .select("id", { count: "exact" })
+        .eq("status", "pending"),
+    );
+    const blocks = requireData(
+      await requester
+        .from("blocks")
+        .select("created_at", { count: "exact" })
+        .eq("blocked_id", addresseeId),
+    );
+
+    expect(connections).toHaveLength(0);
+    expect(pendingRequests).toHaveLength(0);
+    expect(blocks).toHaveLength(1);
   }, 30_000);
 });

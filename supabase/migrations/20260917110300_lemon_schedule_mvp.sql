@@ -66,7 +66,7 @@ create index blocks_blocked_idx on public.blocks (blocked_id, blocker_id);
 create table public.tasks (
   id bigint generated always as identity primary key,
   owner_id uuid not null references public.profiles (id) on delete cascade,
-  title text not null check (char_length(title) between 1 and 120),
+  title text not null check (btrim(title) <> '' and char_length(title) <= 80),
   due_date date not null,
   due_time time,
   recurrence text not null default 'none'
@@ -85,7 +85,8 @@ create table public.task_occurrences (
   task_id bigint not null,
   owner_id uuid not null,
   occurrence_date date not null,
-  title_snapshot text not null check (char_length(title_snapshot) between 1 and 120),
+  title_snapshot text not null
+    check (btrim(title_snapshot) <> '' and char_length(title_snapshot) <= 80),
   due_time time,
   recurrence_snapshot text not null
     check (recurrence_snapshot in ('none', 'daily', 'weekly', 'monthly')),
@@ -262,18 +263,20 @@ declare
   selected_name text;
   selected_time_zone text;
 begin
-  selected_name := left(
-    coalesce(
-      nullif(btrim(new.raw_user_meta_data ->> 'display_name'), ''),
-      nullif(split_part(coalesce(new.email, ''), '@', 1), ''),
-      '레몬 친구'
-    ),
-    40
-  );
-  selected_time_zone := left(
-    coalesce(nullif(btrim(new.raw_user_meta_data ->> 'time_zone'), ''), 'Asia/Seoul'),
-    64
-  );
+  selected_name := nullif(btrim(new.raw_user_meta_data ->> 'display_name'), '');
+  selected_time_zone := nullif(btrim(new.raw_user_meta_data ->> 'time_zone'), '');
+
+  if selected_name is null or char_length(selected_name) > 40 then
+    raise exception 'INVALID_DISPLAY_NAME' using errcode = 'P0001';
+  end if;
+  if selected_time_zone is null
+    or char_length(selected_time_zone) > 64
+    or not exists (
+      select 1 from pg_catalog.pg_timezone_names
+      where name = selected_time_zone
+    ) then
+    raise exception 'INVALID_TIME_ZONE' using errcode = 'P0001';
+  end if;
 
   insert into public.profiles (id, display_name) values (new.id, selected_name);
   insert into public.profile_private (user_id, time_zone, invite_code)
@@ -315,6 +318,35 @@ as $$
     );
 $$;
 
+create function private.lock_user_network(target_user uuid)
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  select pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('lemon-network:' || target_user::text, 0)
+  );
+$$;
+
+revoke all on function private.lock_user_network(uuid) from public, anon, authenticated;
+
+create function private.lock_user_pair(first_user uuid, second_user uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform private.lock_user_network(least(first_user, second_user));
+  if first_user <> second_user then
+    perform private.lock_user_network(greatest(first_user, second_user));
+  end if;
+end;
+$$;
+
+revoke all on function private.lock_user_pair(uuid, uuid) from public, anon, authenticated;
+
 create function private.may_encourage(target_occurrence_id bigint, target_owner_id uuid)
 returns boolean
 language sql
@@ -323,10 +355,13 @@ security definer
 set search_path = ''
 as $$
   select exists (
-    select 1 from public.task_occurrences as occurrence
+    select 1
+    from public.task_occurrences as occurrence
+    join public.tasks as active_task on active_task.id = occurrence.task_id
     where occurrence.id = target_occurrence_id
       and occurrence.owner_id = target_owner_id
       and occurrence.status = 'completed'
+      and active_task.deleted_at is null
       and private.are_connected((select auth.uid()), occurrence.owner_id)
   );
 $$;
@@ -460,18 +495,10 @@ create policy pets_select_owner
 on public.pets for select to authenticated
 using (user_id = (select auth.uid()));
 
-create policy pets_insert_owner
-on public.pets for insert to authenticated
-with check (user_id = (select auth.uid()));
-
 create policy pets_update_owner
 on public.pets for update to authenticated
 using (user_id = (select auth.uid()))
 with check (user_id = (select auth.uid()));
-
-create policy pets_delete_owner
-on public.pets for delete to authenticated
-using (user_id = (select auth.uid()));
 
 create policy pet_unlocks_select_owner
 on public.pet_unlocks for select to authenticated
@@ -530,6 +557,9 @@ begin
   if target_user_id = current_user_id then
     raise exception 'CANNOT_INVITE_SELF' using errcode = 'P0001';
   end if;
+
+  perform private.lock_user_pair(current_user_id, target_user_id);
+
   if exists (
     select 1 from public.blocks
     where (blocker_id = current_user_id and blocked_id = target_user_id)
@@ -552,11 +582,13 @@ begin
     and status = 'pending'
   limit 1;
 
-  if request_id is null then
-    insert into public.connection_requests (requester_id, addressee_id)
-    values (current_user_id, target_user_id)
-    returning id into request_id;
+  if request_id is not null then
+    raise exception 'CONFLICT' using errcode = 'P0001';
   end if;
+
+  insert into public.connection_requests (requester_id, addressee_id)
+  values (current_user_id, target_user_id)
+  returning id into request_id;
 
   insert into public.notifications (
     recipient_id,
@@ -573,15 +605,6 @@ begin
   ) on conflict (recipient_id, event_key) do nothing;
 
   return request_id;
-exception
-  when unique_violation then
-    select id into request_id
-    from public.connection_requests
-    where pair_low = least(current_user_id, target_user_id)
-      and pair_high = greatest(current_user_id, target_user_id)
-      and status = 'pending'
-    limit 1;
-    return request_id;
 end;
 $$;
 
@@ -598,6 +621,19 @@ begin
   if current_user_id is null then
     raise exception 'AUTH_REQUIRED' using errcode = 'P0001';
   end if;
+
+  select * into selected_request
+  from public.connection_requests
+  where id = target_request_id;
+
+  if not found or selected_request.addressee_id <> current_user_id then
+    raise exception 'REQUEST_NOT_FOUND' using errcode = 'P0001';
+  end if;
+
+  perform private.lock_user_pair(
+    selected_request.requester_id,
+    selected_request.addressee_id
+  );
 
   select * into selected_request
   from public.connection_requests
@@ -659,10 +695,24 @@ set search_path = ''
 as $$
 declare
   current_user_id uuid := (select auth.uid());
+  selected_request public.connection_requests%rowtype;
 begin
   if current_user_id is null then
     raise exception 'AUTH_REQUIRED' using errcode = 'P0001';
   end if;
+
+  select * into selected_request
+  from public.connection_requests
+  where id = target_request_id;
+
+  if not found or selected_request.requester_id <> current_user_id then
+    return false;
+  end if;
+
+  perform private.lock_user_pair(
+    selected_request.requester_id,
+    selected_request.addressee_id
+  );
 
   update public.connection_requests
   set status = 'cancelled', responded_at = now()
@@ -686,6 +736,11 @@ begin
   if current_user_id is null then
     raise exception 'AUTH_REQUIRED' using errcode = 'P0001';
   end if;
+  if friend_id is null or friend_id = current_user_id then
+    raise exception 'INVALID_CONNECTION_TARGET' using errcode = 'P0001';
+  end if;
+
+  perform private.lock_user_pair(current_user_id, friend_id);
 
   delete from public.connections
   where user_low_id = least(current_user_id, friend_id)
@@ -710,6 +765,8 @@ begin
   if target_user_id is null or target_user_id = current_user_id then
     raise exception 'INVALID_BLOCK_TARGET' using errcode = 'P0001';
   end if;
+
+  perform private.lock_user_pair(current_user_id, target_user_id);
 
   insert into public.blocks (blocker_id, blocked_id)
   values (current_user_id, target_user_id)
@@ -741,6 +798,11 @@ begin
   if current_user_id is null then
     raise exception 'AUTH_REQUIRED' using errcode = 'P0001';
   end if;
+  if target_user_id is null or target_user_id = current_user_id then
+    raise exception 'INVALID_BLOCK_TARGET' using errcode = 'P0001';
+  end if;
+
+  perform private.lock_user_pair(current_user_id, target_user_id);
 
   delete from public.blocks
   where blocker_id = current_user_id and blocked_id = target_user_id;
@@ -787,6 +849,8 @@ begin
   if current_user_id is null then
     raise exception 'AUTH_REQUIRED' using errcode = 'P0001';
   end if;
+
+  perform private.lock_user_network(current_user_id);
 
   select occurrence.* into selected_occurrence
   from public.task_occurrences as occurrence
@@ -939,7 +1003,21 @@ begin
 
   select owner_id into target_owner_id
   from public.task_occurrences
-  where id = target_occurrence_id and status = 'completed';
+  where id = target_occurrence_id;
+
+  if target_owner_id is null then
+    raise exception 'ENCOURAGEMENT_NOT_ALLOWED' using errcode = 'P0001';
+  end if;
+
+  perform private.lock_user_pair(current_user_id, target_owner_id);
+
+  select occurrence.owner_id into target_owner_id
+  from public.task_occurrences as occurrence
+  join public.tasks as active_task on active_task.id = occurrence.task_id
+  where occurrence.id = target_occurrence_id
+    and occurrence.status = 'completed'
+    and active_task.deleted_at is null
+  for update of occurrence, active_task;
 
   if target_owner_id is null
     or not private.may_encourage(target_occurrence_id, target_owner_id) then
@@ -1089,7 +1167,7 @@ grant select, insert on public.task_occurrences to authenticated;
 grant select on public.completion_events to authenticated;
 grant select on public.encouragements to authenticated;
 grant select, update (read_at) on public.notifications to authenticated;
-grant select, insert, delete, update (drawing_path) on public.pets to authenticated;
+grant select, update (drawing_path) on public.pets to authenticated;
 grant select on public.pet_unlocks to authenticated;
 grant select, insert, update, delete on public.device_tokens to authenticated;
 grant select on public.daily_progress to authenticated;

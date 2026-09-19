@@ -1,7 +1,36 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(49);
+select extensions.plan(86);
+
+select extensions.throws_ok(
+  $$insert into auth.users (
+      instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+    ) values (
+      '00000000-0000-0000-0000-000000000000',
+      '00000000-0000-0000-0000-000000000010',
+      'authenticated', 'authenticated', 'missing-name@example.test', '', now(),
+      '{"provider":"email","providers":["email"]}', '{"time_zone":"Asia/Seoul"}', now(), now()
+    )$$,
+  'P0001',
+  'INVALID_DISPLAY_NAME',
+  'signup requires an explicit display name'
+);
+select extensions.throws_ok(
+  $$insert into auth.users (
+      instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+    ) values (
+      '00000000-0000-0000-0000-000000000000',
+      '00000000-0000-0000-0000-000000000011',
+      'authenticated', 'authenticated', 'missing-zone@example.test', '', now(),
+      '{"provider":"email","providers":["email"]}', '{"display_name":"No zone"}', now(), now()
+    )$$,
+  'P0001',
+  'INVALID_TIME_ZONE',
+  'signup requires an explicit IANA time zone'
+);
 
 insert into auth.users (
   instance_id,
@@ -64,6 +93,9 @@ set invite_code = case user_id
   else 'LEMONC0001'
 end;
 
+insert into public.pet_unlocks (user_id, item_key, item_kind)
+values ('00000000-0000-0000-0000-000000000001', 'sunny-yellow', 'color');
+
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
@@ -74,10 +106,36 @@ select extensions.throws_ok(
   'INVALID_TIME_ZONE',
   'profile time zone must be an IANA identifier'
 );
+select extensions.lives_ok(
+  $$insert into public.device_tokens (user_id, device_id, token, platform)
+    values (auth.uid(), 'owner-phone', 'owner-device-token-00000001', 'android')$$,
+  'owner can register a device token'
+);
+select extensions.throws_ok(
+  $$insert into public.pets (user_id) values (auth.uid())$$,
+  'authenticated users cannot create a second pet row'
+);
+select extensions.throws_ok(
+  $$delete from public.pets where user_id = auth.uid()$$,
+  'authenticated users cannot delete their provisioned pet row'
+);
+select extensions.is(
+  (select count(*)::integer from public.pets where user_id = auth.uid()),
+  1,
+  'signup provisioning leaves exactly one pet row'
+);
 
 select extensions.lives_ok(
   $$insert into public.tasks (owner_id, title, due_date) values ('00000000-0000-0000-0000-000000000001', 'Owner task', current_date)$$,
   'owner can create a task'
+);
+select extensions.throws_ok(
+  $$insert into public.tasks (owner_id, title, due_date) values (auth.uid(), repeat('a', 81), current_date)$$,
+  'task title cannot exceed 80 stored characters'
+);
+select extensions.throws_ok(
+  $$insert into public.tasks (owner_id, title, due_date) values (auth.uid(), repeat(' ', 80), current_date)$$,
+  'task title cannot contain only whitespace'
 );
 select extensions.is(
   (select count(*)::integer from public.tasks where title = 'Owner task'),
@@ -95,16 +153,37 @@ select extensions.throws_ok(
   $$insert into public.tasks (owner_id, title, due_date) values ('00000000-0000-0000-0000-000000000001', 'Forged task', current_date)$$,
   'nonowner cannot create a task for somebody else'
 );
+select extensions.is(
+  (select count(*)::integer from public.profile_private where user_id = '00000000-0000-0000-0000-000000000001'),
+  0,
+  'nonfriend cannot read owner private profile data'
+);
+select extensions.is(
+  (select count(*)::integer from public.pets where user_id = '00000000-0000-0000-0000-000000000001'),
+  0,
+  'nonfriend cannot read owner pet data'
+);
+select extensions.is(
+  (select count(*)::integer from public.pet_unlocks where user_id = '00000000-0000-0000-0000-000000000001'),
+  0,
+  'nonfriend cannot read owner pet unlocks'
+);
+select extensions.is(
+  (select count(*)::integer from public.device_tokens where user_id = '00000000-0000-0000-0000-000000000001'),
+  0,
+  'nonfriend cannot read owner device tokens'
+);
 
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
 select extensions.lives_ok(
   $$select public.request_connection('LEMONB0001')$$,
   'owner can request a connection by invite code'
 );
-select extensions.is(
-  public.request_connection('LEMONB0001'),
-  (select id from public.connection_requests where status = 'pending'),
-  'duplicate pending request returns the original request'
+select extensions.throws_ok(
+  $$select public.request_connection('LEMONB0001')$$,
+  'P0001',
+  'CONFLICT',
+  'duplicate pending request is rejected as a conflict'
 );
 select extensions.is(
   (select count(*)::integer from public.connection_requests where status = 'pending'),
@@ -132,6 +211,26 @@ select extensions.is(
   (select count(*)::integer from public.tasks where title = 'Owner task'),
   1,
   'connected friend can read the task'
+);
+select extensions.is(
+  (select count(*)::integer from public.profile_private where user_id = '00000000-0000-0000-0000-000000000001'),
+  0,
+  'connected friend cannot read owner private profile data'
+);
+select extensions.is(
+  (select count(*)::integer from public.pets where user_id = '00000000-0000-0000-0000-000000000001'),
+  0,
+  'connected friend cannot read owner pet data'
+);
+select extensions.is(
+  (select count(*)::integer from public.pet_unlocks where user_id = '00000000-0000-0000-0000-000000000001'),
+  0,
+  'connected friend cannot read owner pet unlocks'
+);
+select extensions.is(
+  (select count(*)::integer from public.device_tokens where user_id = '00000000-0000-0000-0000-000000000001'),
+  0,
+  'connected friend cannot read owner device tokens'
 );
 select extensions.lives_ok(
   $$update public.tasks set title = 'Friend edit' where title = 'Owner task'$$,
@@ -274,12 +373,137 @@ select extensions.is(
   0,
   'disconnected author loses historic encouragement access'
 );
+select extensions.is(
+  (select count(*)::integer from public.profile_private where user_id = '00000000-0000-0000-0000-000000000001'),
+  0,
+  'disconnected user cannot read former friend private profile data'
+);
+select extensions.is(
+  (select count(*)::integer from public.pets where user_id = '00000000-0000-0000-0000-000000000001'),
+  0,
+  'disconnected user cannot read former friend pet data'
+);
+select extensions.is(
+  (select count(*)::integer from public.pet_unlocks where user_id = '00000000-0000-0000-0000-000000000001'),
+  0,
+  'disconnected user cannot read former friend pet unlocks'
+);
+select extensions.is(
+  (select count(*)::integer from public.device_tokens where user_id = '00000000-0000-0000-0000-000000000001'),
+  0,
+  'disconnected user cannot read former friend device tokens'
+);
+select extensions.throws_ok(
+  $$select public.upsert_encouragement((select id from public.task_occurrences limit 1), 'heart', '또 해냈어!')$$,
+  'disconnected user cannot write an encouragement'
+);
+select extensions.lives_ok(
+  $$select public.request_connection('LEMONA0001')$$,
+  'disconnected user can send a fresh connection request'
+);
 
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
 select extensions.is(
   (select count(*)::integer from public.encouragements),
   1,
   'task owner retains historic encouragement after disconnect'
+);
+select extensions.lives_ok(
+  $$select public.respond_connection_request((select id from public.connection_requests where status = 'pending'), true)$$,
+  'owner can accept the fresh connection request'
+);
+
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
+select extensions.is(
+  (select count(*)::integer from public.tasks where title = 'Owner task'),
+  1,
+  'reconnected friend regains task access'
+);
+
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
+select extensions.lives_ok(
+  $$select public.block_user('00000000-0000-0000-0000-000000000002')$$,
+  'owner can block an actively connected friend'
+);
+select extensions.is(
+  (select count(*)::integer from public.connections),
+  0,
+  'blocking immediately removes the active connection'
+);
+
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
+select extensions.is(
+  (select count(*)::integer from public.tasks where title = 'Owner task'),
+  0,
+  'blocked former friend immediately loses task access'
+);
+select extensions.is(
+  (select count(*)::integer from public.profile_private where user_id = '00000000-0000-0000-0000-000000000001'),
+  0,
+  'blocked user cannot read blocker private profile data'
+);
+select extensions.is(
+  (select count(*)::integer from public.pets where user_id = '00000000-0000-0000-0000-000000000001'),
+  0,
+  'blocked user cannot read blocker pet data'
+);
+select extensions.is(
+  (select count(*)::integer from public.pet_unlocks where user_id = '00000000-0000-0000-0000-000000000001'),
+  0,
+  'blocked user cannot read blocker pet unlocks'
+);
+select extensions.is(
+  (select count(*)::integer from public.device_tokens where user_id = '00000000-0000-0000-0000-000000000001'),
+  0,
+  'blocked user cannot read blocker device tokens'
+);
+select extensions.lives_ok(
+  $$update public.tasks set title = 'Blocked edit' where owner_id = '00000000-0000-0000-0000-000000000001'$$,
+  'blocked task mutation is safely filtered by RLS'
+);
+select extensions.throws_ok(
+  $$select public.upsert_encouragement((select id from public.task_occurrences limit 1), 'heart', '보이면 안 돼')$$,
+  'blocked user cannot write an encouragement'
+);
+select extensions.throws_ok(
+  $$select public.request_connection('LEMONA0001')$$,
+  'P0001',
+  'CONNECTION_BLOCKED',
+  'block prevents a new request from the blocked user'
+);
+
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
+select extensions.is(
+  (select count(*)::integer from public.tasks where title = 'Owner task'),
+  1,
+  'blocked user did not mutate the owner task'
+);
+select extensions.throws_ok(
+  $$select public.request_connection('LEMONB0001')$$,
+  'P0001',
+  'CONNECTION_BLOCKED',
+  'block prevents a new request from the blocker'
+);
+select extensions.lives_ok(
+  $$select public.unblock_user('00000000-0000-0000-0000-000000000002')$$,
+  'blocker can unblock the user'
+);
+select extensions.is(
+  (select count(*)::integer from public.connections),
+  0,
+  'unblock does not restore the old connection'
+);
+
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
+select extensions.lives_ok(
+  $$select public.request_connection('LEMONA0001')$$,
+  'unblocked user can request a new connection'
+);
+
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
+select extensions.lives_ok(
+  $$select public.respond_connection_request((select id from public.connection_requests where status = 'pending'), true)$$,
+  'owner can reconnect before deleting the task'
 );
 select extensions.lives_ok(
   $$select public.delete_task((select id from public.tasks where title = 'Owner task'))$$,
@@ -304,32 +528,11 @@ select extensions.is(
 );
 
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
-select extensions.lives_ok(
-  $$select public.block_user('00000000-0000-0000-0000-000000000002')$$,
-  'owner can block the former friend'
-);
-
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
 select extensions.throws_ok(
-  $$select public.request_connection('LEMONA0001')$$,
-  'P0001',
-  'CONNECTION_BLOCKED',
-  'block prevents a new request in either direction'
+  $$select public.upsert_encouragement(1, 'heart', '삭제된 할 일')$$,
+  'connected user cannot encourage a logically deleted task'
 );
-
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
-select extensions.lives_ok(
-  $$select public.unblock_user('00000000-0000-0000-0000-000000000002')$$,
-  'blocker can unblock the user'
-);
-select extensions.is(
-  (select count(*)::integer from public.connections),
-  0,
-  'unblock does not restore the old connection'
-);
-
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
 select extensions.lives_ok(
   $$select public.delete_encouragement(1)$$,
   'author deletion records a tombstone even after disconnect'
