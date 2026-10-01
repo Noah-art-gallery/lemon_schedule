@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(86);
+select extensions.plan(100);
 
 select extensions.throws_ok(
   $$insert into auth.users (
@@ -100,11 +100,52 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
 
+select extensions.lives_ok(
+  $$update public.pets
+    set drawing_path = '00000000-0000-0000-0000-000000000001/pet.png'
+    where user_id = auth.uid()$$,
+  'owner can save a PNG drawing path accepted by the final constraint'
+);
+select extensions.throws_ok(
+  $$select public.set_pet_decorations('lemon-yellow', null, null)$$,
+  'P0001',
+  'PET_ITEM_LOCKED',
+  'locked pet colors cannot be selected'
+);
+
+reset role;
+insert into public.pet_unlocks (user_id, item_key, item_kind)
+values ('00000000-0000-0000-0000-000000000001', 'lemon-yellow', 'color');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
+select extensions.lives_ok(
+  $$select public.set_pet_decorations('lemon-yellow', null, null)$$,
+  'unlocked pet colors can be selected'
+);
+
 select extensions.throws_ok(
   $$update public.profile_private set time_zone = 'Not/AZone'$$,
   '23514',
   'INVALID_TIME_ZONE',
   'profile time zone must be an IANA identifier'
+);
+select extensions.lives_ok(
+  $$select public.update_my_profile(null, 'Asia/Tokyo')$$,
+  'profile update can change only the time zone'
+);
+select extensions.is(
+  (select display_name from public.profiles where id = auth.uid()),
+  'Owner',
+  'partial profile update preserves the omitted nickname'
+);
+select extensions.is(
+  (select time_zone from public.profile_private where user_id = auth.uid()),
+  'Asia/Tokyo',
+  'profile update applies the requested time zone atomically'
+);
+select extensions.lives_ok(
+  $$select public.update_my_profile(null, 'Asia/Seoul')$$,
+  'profile time zone can be restored'
 );
 select extensions.lives_ok(
   $$insert into public.device_tokens (user_id, device_id, token, platform)
@@ -126,15 +167,15 @@ select extensions.is(
 );
 
 select extensions.lives_ok(
-  $$insert into public.tasks (owner_id, title, due_date) values ('00000000-0000-0000-0000-000000000001', 'Owner task', current_date)$$,
+  $$select public.create_task_schedule('Owner task', current_date, null, 'none')$$,
   'owner can create a task'
 );
 select extensions.throws_ok(
-  $$insert into public.tasks (owner_id, title, due_date) values (auth.uid(), repeat('a', 81), current_date)$$,
+  $$select public.create_task_schedule(repeat('a', 81), current_date, null, 'none')$$,
   'task title cannot exceed 80 stored characters'
 );
 select extensions.throws_ok(
-  $$insert into public.tasks (owner_id, title, due_date) values (auth.uid(), repeat(' ', 80), current_date)$$,
+  $$select public.create_task_schedule(repeat(' ', 80), current_date, null, 'none')$$,
   'task title cannot contain only whitespace'
 );
 select extensions.is(
@@ -212,6 +253,18 @@ select extensions.is(
   1,
   'connected friend can read the task'
 );
+select extensions.throws_ok(
+  $$insert into public.task_occurrences (
+      task_id, owner_id, occurrence_date, title_snapshot, recurrence_snapshot
+    ) values (
+      (select id from public.tasks where title = 'Owner task'),
+      '00000000-0000-0000-0000-000000000001',
+      current_date + 50,
+      'Forged reward',
+      'none'
+    )$$,
+  'authenticated users cannot forge reward-bearing occurrences'
+);
 select extensions.is(
   (select count(*)::integer from public.profile_private where user_id = '00000000-0000-0000-0000-000000000001'),
   0,
@@ -232,7 +285,7 @@ select extensions.is(
   0,
   'connected friend cannot read owner device tokens'
 );
-select extensions.lives_ok(
+select extensions.throws_ok(
   $$update public.tasks set title = 'Friend edit' where title = 'Owner task'$$,
   'friend update is safely filtered by RLS'
 );
@@ -265,10 +318,10 @@ select extensions.is(
 );
 
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
-select extensions.lives_ok(
-  $$insert into public.task_occurrences (task_id, owner_id, occurrence_date, title_snapshot, recurrence_snapshot)
-    select id, owner_id, due_date, title, recurrence from public.tasks where title = 'Owner task'$$,
-  'owner can create a pending occurrence'
+select extensions.is(
+  (select count(*)::integer from public.task_occurrences where title_snapshot = 'Owner task'),
+  1,
+  'atomic task creation provisions the pending occurrence'
 );
 select extensions.lives_ok(
   $$select public.complete_occurrence((select id from public.task_occurrences limit 1))$$,
@@ -325,6 +378,27 @@ select extensions.is(
 );
 
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
+select extensions.lives_ok(
+  $$select public.hide_encouragement((select id from public.encouragements limit 1), true)$$,
+  'owner can hide an encouragement'
+);
+select extensions.is(
+  (select count(*)::integer from public.encouragements where visibility = 'hidden_by_owner'),
+  1,
+  'owner keeps hidden encouragement in history'
+);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
+select extensions.is(
+  (select count(*)::integer from public.encouragements where visibility = 'hidden_by_owner'),
+  1,
+  'author can still see own hidden encouragement while connected and complete'
+);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
+select extensions.lives_ok(
+  $$select public.hide_encouragement((select id from public.encouragements limit 1), false)$$,
+  'owner can restore a non-deleted encouragement'
+);
+
 select extensions.lives_ok(
   $$select public.reopen_occurrence((select id from public.task_occurrences limit 1))$$,
   'owner can reopen the occurrence'
@@ -426,6 +500,16 @@ select extensions.lives_ok(
   'owner can block an actively connected friend'
 );
 select extensions.is(
+  (select count(*)::integer from public.list_blocked_profiles()),
+  1,
+  'blocker can list the blocked public nickname'
+);
+select extensions.is(
+  (select display_name from public.list_blocked_profiles() limit 1),
+  'Friend',
+  'blocked list exposes only the public nickname'
+);
+select extensions.is(
   (select count(*)::integer from public.connections),
   0,
   'blocking immediately removes the active connection'
@@ -457,7 +541,7 @@ select extensions.is(
   0,
   'blocked user cannot read blocker device tokens'
 );
-select extensions.lives_ok(
+select extensions.throws_ok(
   $$update public.tasks set title = 'Blocked edit' where owner_id = '00000000-0000-0000-0000-000000000001'$$,
   'blocked task mutation is safely filtered by RLS'
 );

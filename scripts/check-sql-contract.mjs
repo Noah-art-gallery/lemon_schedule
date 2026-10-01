@@ -28,6 +28,7 @@ const protectedTables = [
   "pets",
   "pet_unlocks",
   "device_tokens",
+  "push_delivery_attempts",
 ];
 
 for (const table of protectedTables) {
@@ -52,6 +53,13 @@ for (const rpc of [
   "upsert_encouragement",
   "delete_task",
   "delete_encouragement",
+  "create_task_schedule",
+  "update_task_schedule",
+  "list_task_occurrences",
+  "get_owner_today",
+  "update_my_profile",
+  "list_blocked_profiles",
+  "set_pet_decorations",
 ]) {
   assert.match(sql, new RegExp(`create function public\\.${rpc}\\(`), `${rpc} RPC missing`);
   assert.match(
@@ -72,9 +80,29 @@ assert.match(
   "notifications must dedupe",
 );
 assert.match(sql, /with \(security_invoker = true\)/, "views must honor caller RLS");
+assert.match(
+  sql,
+  /unique \(notification_id, device_id\)/,
+  "push attempts must dedupe per notification and device",
+);
+assert.match(
+  sql,
+  /grant select, insert, update on table public\.push_delivery_attempts to service_role/,
+  "only the server may record push attempts",
+);
 assert.match(sql, /bucket_id = 'pet-drawings'/, "pet drawings must use a private owner bucket");
+assert.match(
+  sql,
+  /drawing_path ~ '\^\[0-9a-f-\]\+\/pet\[\.\]png\$'/,
+  "stored pet.png paths must pass the final database constraint",
+);
 assert.match(sql, /deleted_at timestamptz/, "tasks must support logical deletion");
 assert.match(sql, /'deleted_by_author'/, "encouragement deletion must preserve a tombstone");
+assert.match(
+  sql,
+  /visibility = 'visible' or author_id = \(select auth\.uid\(\)\)/,
+  "hidden encouragement must remain visible to its author",
+);
 assert.match(sql, /pg_catalog\.pg_timezone_names/, "time zones must be validated as IANA names");
 assert.match(
   sql,
@@ -123,6 +151,40 @@ assert.match(
   encouragementBody,
   /private\.lock_user_pair\(/,
   "encouragement writes must be serialized with relationship changes",
+);
+const listOccurrencesBody = sql.match(
+  /create function public\.list_task_occurrences\([\s\S]*?\n\$\$;/,
+)?.[0];
+assert.ok(listOccurrencesBody, "list_task_occurrences function body missing");
+assert.match(
+  listOccurrencesBody,
+  /private\.lock_user_pair\(/,
+  "friend reads must serialize with relationship changes",
+);
+assert.match(
+  sql,
+  /revoke insert on public\.tasks from authenticated/,
+  "task creation must use RPC",
+);
+assert.match(
+  sql,
+  /revoke insert \(owner_id, title, due_date, due_time, recurrence\) on public\.tasks/,
+  "column-level task insert grants must also be revoked",
+);
+assert.match(
+  sql,
+  /revoke insert on public\.task_occurrences from authenticated/,
+  "occurrences must only be materialized by guarded functions",
+);
+assert.match(
+  sql,
+  /revoke update \(title, due_date, due_time, recurrence\) on public\.tasks/,
+  "schedule edits must use the schedule-aware RPC",
+);
+assert.match(
+  sql,
+  /revoke update \(recurrence_changed_at\) on public\.tasks/,
+  "recurrence metadata edits must use the schedule-aware RPC",
 );
 assert.doesNotMatch(
   sql,

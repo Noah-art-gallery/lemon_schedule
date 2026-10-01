@@ -62,31 +62,22 @@ integrationDescribe("Supabase completion concurrency", () => {
       }),
     );
 
-    const task = requireData(
-      await owner
-        .from("tasks")
-        .insert({
-          owner_id: ownerId,
-          title: "Concurrent completion",
-          due_date: "2026-09-17",
-          due_time: null,
-          recurrence: "none",
-        })
-        .select("id")
-        .single(),
+    const taskResult = requireData(
+      await owner.rpc("create_task_schedule", {
+        target_title: "Concurrent completion",
+        target_due_date: "2026-09-17",
+        target_due_time: null,
+        target_recurrence: "none",
+      }),
     );
+    if (typeof taskResult !== "object" || !taskResult || !("taskId" in taskResult)) {
+      throw new Error("Task RPC returned an invalid result");
+    }
     const occurrence = requireData(
       await owner
         .from("task_occurrences")
-        .insert({
-          task_id: task.id,
-          owner_id: ownerId,
-          occurrence_date: "2026-09-17",
-          title_snapshot: "Concurrent completion",
-          due_time: null,
-          recurrence_snapshot: "none",
-        })
         .select("id")
+        .eq("task_id", Number(taskResult.taskId))
         .single(),
     );
 

@@ -864,11 +864,19 @@ begin
   end if;
 
   if selected_occurrence.status = 'completed' then
+    select id into inserted_event_id
+    from public.completion_events
+    where occurrence_id = selected_occurrence.id;
     select lemon_points into current_points
     from public.profile_private where user_id = current_user_id;
     return jsonb_build_object(
+      'status', 'completed',
       'changed', false,
+      'completedAt', selected_occurrence.completed_at,
       'firstCompletion', false,
+      'rewardGranted', false,
+      'rewardPoints', 0,
+      'completionEventId', inserted_event_id,
       'points', current_points
     );
   end if;
@@ -940,8 +948,15 @@ begin
   end if;
 
   return jsonb_build_object(
+    'status', 'completed',
     'changed', true,
     'firstCompletion', inserted_event_id is not null,
+    'rewardGranted', inserted_event_id is not null,
+    'rewardPoints', case when inserted_event_id is not null then 1 else 0 end,
+    'completionEventId', coalesce(
+      inserted_event_id,
+      (select id from public.completion_events where occurrence_id = selected_occurrence.id)
+    ),
     'points', current_points,
     'completedAt', selected_occurrence.completed_at
   );

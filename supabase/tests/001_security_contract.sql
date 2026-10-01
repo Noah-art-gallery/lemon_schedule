@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(8);
+select extensions.plan(16);
 
 select extensions.is(
   (
@@ -23,11 +23,12 @@ select extensions.is(
         'notifications',
         'pets',
         'pet_unlocks',
-        'device_tokens'
+        'device_tokens',
+        'push_delivery_attempts'
       )
       and relation.relrowsecurity
   ),
-  13,
+  14,
   'every exposed MVP table enables row-level security'
 );
 
@@ -49,6 +50,39 @@ select extensions.ok(
 select extensions.ok(
   has_function_privilege('authenticated', 'public.complete_occurrence(bigint)', 'execute'),
   'authenticated callers can invoke the guarded completion RPC'
+);
+
+select extensions.ok(
+  not has_table_privilege('authenticated', 'public.tasks', 'insert'),
+  'authenticated callers cannot bypass atomic task creation'
+);
+
+select extensions.ok(
+  not has_table_privilege('authenticated', 'public.task_occurrences', 'insert'),
+  'authenticated callers cannot forge reward-bearing occurrences'
+);
+
+select extensions.ok(
+  not has_column_privilege('authenticated', 'public.tasks', 'title', 'update'),
+  'authenticated callers cannot bypass schedule-aware task updates'
+);
+
+select extensions.ok(
+  has_function_privilege(
+    'authenticated',
+    'public.create_task_schedule(text,date,time without time zone,text)',
+    'execute'
+  ),
+  'authenticated callers can invoke atomic task creation'
+);
+
+select extensions.ok(
+  has_function_privilege(
+    'authenticated',
+    'public.list_task_occurrences(uuid,date,date)',
+    'execute'
+  ),
+  'authenticated callers can request a bounded occurrence range'
 );
 
 select extensions.ok(
@@ -90,6 +124,27 @@ select extensions.ok(
     where tgname = 'on_auth_user_created' and not tgisinternal
   ),
   'new auth users receive a profile and private pet record'
+);
+
+select extensions.ok(
+  not has_table_privilege('authenticated', 'public.push_delivery_attempts', 'select'),
+  'users cannot inspect delivery status or provider identifiers'
+);
+
+select extensions.ok(
+  has_table_privilege('service_role', 'public.push_delivery_attempts', 'insert'),
+  'server delivery handler can claim an attempt'
+);
+
+select extensions.ok(
+  exists (
+    select 1
+    from pg_indexes
+    where schemaname = 'public'
+      and tablename = 'push_delivery_attempts'
+      and indexdef like '%UNIQUE%notification_id%device_id%'
+  ),
+  'one push attempt is claimed per notification and device'
 );
 
 select * from extensions.finish();

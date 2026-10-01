@@ -6,12 +6,14 @@
   "description": "친구의 응원과 나만의 펫으로 꾸준함을 돕는 소셜 투두 MVP",
   "scripts": {
     "dev": "next dev",
+    "dev:demo": "cross-env NEXT_PUBLIC_DEMO_MODE=1 next dev",
     "build": "next build",
     "start": "serve out",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
+    "typecheck:edge": "tsc --ignoreConfig --noEmit --target ES2022 --lib ES2022,DOM --module esnext --moduleResolution bundler --skipLibCheck --strict supabase/functions/send-completion-push/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:db-contract": "node scripts/check-sql-contract.mjs",
@@ -20,7 +22,7 @@
     "test:db": "supabase test db",
     "test:integration": "cross-env RUN_SUPABASE_INTEGRATION=1 vitest run src/lib/supabase/supabase.integration.test.ts",
     "test:e2e": "playwright test",
-    "test:e2e:external": "cross-env PLAYWRIGHT_EXTERNAL_SERVER=1 playwright test",
+    "test:e2e:external": "playwright test",
     "cap:sync": "cap sync",
     "cap:android": "cap open android",
     "cap:ios": "cap open ios"

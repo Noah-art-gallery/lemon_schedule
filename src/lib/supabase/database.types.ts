@@ -148,6 +148,9 @@ export type Database = {
       pets: DbTable<{
         user_id: string;
         drawing_path: string | null;
+        selected_color: "leaf-green" | "lemon-yellow";
+        selected_accessory: "leaf-hat" | null;
+        selected_background: "sunny-garden" | null;
         created_at: string;
         updated_at: string;
       }>;
@@ -180,7 +183,23 @@ export type Database = {
       };
     };
     Functions: {
+      set_pet_decorations: {
+        Args: {
+          target_color: "leaf-green" | "lemon-yellow";
+          target_accessory: "leaf-hat" | null;
+          target_background: "sunny-garden" | null;
+        };
+        Returns: Json;
+      };
       request_connection: { Args: { target_invite_code: string }; Returns: number };
+      update_my_profile: {
+        Args: { new_display_name: string | null; new_time_zone: string | null };
+        Returns: Json;
+      };
+      list_blocked_profiles: {
+        Args: Record<string, never>;
+        Returns: Array<{ user_id: string; display_name: string; blocked_at: string }>;
+      };
       respond_connection_request: {
         Args: { target_request_id: number; accept_request: boolean };
         Returns: boolean;
@@ -193,6 +212,31 @@ export type Database = {
       block_user: { Args: { target_user_id: string }; Returns: boolean };
       unblock_user: { Args: { target_user_id: string }; Returns: boolean };
       delete_task: { Args: { target_task_id: number }; Returns: boolean };
+      update_task_schedule: {
+        Args: {
+          target_task_id: number;
+          target_title: string | null;
+          target_due_date: string | null;
+          target_due_time: string | null;
+          target_recurrence: Recurrence | null;
+          due_time_provided: boolean;
+        };
+        Returns: Json;
+      };
+      create_task_schedule: {
+        Args: {
+          target_title: string;
+          target_due_date: string;
+          target_due_time: string | null;
+          target_recurrence: Recurrence;
+        };
+        Returns: Json;
+      };
+      list_task_occurrences: {
+        Args: { target_owner_id: string; range_from: string; range_to: string };
+        Returns: TaskOccurrenceRow[];
+      };
+      get_owner_today: { Args: { target_owner_id: string }; Returns: string };
       complete_occurrence: {
         Args: { target_occurrence_id: number };
         Returns: Json;
