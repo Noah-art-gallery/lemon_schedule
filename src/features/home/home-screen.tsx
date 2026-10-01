@@ -86,7 +86,7 @@ function recurrenceLabel(value: TaskOccurrenceRow["recurrence_snapshot"]): strin
 
 export function HomeScreen() {
   const { user, demo } = useAuth();
-  const [timeZone, setTimeZone] = useState(getDeviceTimeZone);
+  const [timeZone, setTimeZone] = useState(() => (demo ? "Asia/Seoul" : getDeviceTimeZone()));
   const today = toDateKey(new Date(), timeZone);
   const [ownerToday, setOwnerToday] = useState(today);
   const [items, setItems] = useState<TaskOccurrenceRow[]>(() =>

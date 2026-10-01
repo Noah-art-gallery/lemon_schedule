@@ -11,7 +11,7 @@
 
 ## 검증됨
 
-최신 UI 통합 상태에서 `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm run typecheck:edge`, `npm test -- --run`(30개 통과·2개 외부 의존성으로 건너뜀), `npm run test:db-contract`(14개 RLS 테이블·7개 migration), `npm run build`가 통과했다. Playwright 모바일·데스크톱 기본 흐름 18개가 시스템 Chrome과 별도 데모 서버에서 통과했고, 정적 빌드 뒤 `npm run cap:sync`가 Android/iOS 모두 통과했다. Edge Function은 비밀 헤더·이벤트 검증 단위 검사와 정적 타입 검사만 완료했다.
+최신 UI 통합 상태에서 `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm run typecheck:edge`, `npm test -- --run`(30개 통과·2개 외부 의존성으로 건너뜀), `npm run test:db-contract`(14개 RLS 테이블·7개 migration), `npm run build`가 통과했다. Playwright 모바일·데스크톱 기본 흐름과 hydration 검사 20개가 시스템 Chrome과 별도 데모 서버에서 통과했고, 정적 빌드 뒤 `npm run cap:sync`가 Android/iOS 모두 통과했다. Edge Function은 비밀 헤더·이벤트 검증 단위 검사와 정적 타입 검사만 완료했다.
 
 ## 남은 일
 

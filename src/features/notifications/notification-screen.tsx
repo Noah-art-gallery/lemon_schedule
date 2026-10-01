@@ -30,7 +30,7 @@ const demoNotifications: NotificationItem[] = [
     encouragement_id: null,
     event_key: "demo-task",
     read_at: null,
-    created_at: new Date().toISOString(),
+    created_at: "2026-09-01T09:00:00+09:00",
     actorName: "엄마",
   },
   {
@@ -43,7 +43,7 @@ const demoNotifications: NotificationItem[] = [
     encouragement_id: 2,
     event_key: "demo-encouragement",
     read_at: null,
-    created_at: new Date(Date.now() - 1000 * 60 * 20).toISOString(),
+    created_at: "2026-09-01T08:40:00+09:00",
     actorName: "엄마",
   },
 ];
@@ -226,6 +226,7 @@ export function NotificationScreen() {
                     day: "numeric",
                     hour: "numeric",
                     minute: "2-digit",
+                    timeZone: demo ? "Asia/Seoul" : undefined,
                   })}
                 </span>
               </button>

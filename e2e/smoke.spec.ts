@@ -61,6 +61,25 @@ test("알림을 모두 읽음으로 바꿀 수 있다", async ({ page }) => {
   await expect(page.getByText("읽음")).toHaveCount(2);
 });
 
+test("데모 홈과 알림을 열 때 hydration 오류가 없다", async ({ page }) => {
+  const hydrationErrors: string[] = [];
+  page.on("console", (message) => {
+    if (/Hydration failed|server rendered text didn't match/i.test(message.text())) {
+      hydrationErrors.push(message.text());
+    }
+  });
+  page.on("pageerror", (error) => {
+    if (/Hydration failed|server rendered text didn't match/i.test(error.message)) {
+      hydrationErrors.push(error.message);
+    }
+  });
+  await page.goto("/notifications/");
+  await expect(page.getByRole("heading", { name: "알림", level: 1 })).toBeVisible();
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "오늘도 한 걸음, 같이 해요" })).toBeVisible();
+  expect(hydrationErrors).toEqual([]);
+});
+
 test("펫 도화지가 모바일에서도 열린다", async ({ page }) => {
   await page.goto("/pet/");
   await expect(page.getByRole("option", { name: /레몬 노랑/ })).toHaveAttribute("disabled", "");
