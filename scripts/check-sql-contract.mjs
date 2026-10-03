@@ -203,6 +203,31 @@ assert.match(
   "pending-request visibility must compare the outer profile UUID, not the request ID",
 );
 
+const webhookBody = sql.match(
+  /create function private\.enqueue_completion_push\(\)[\s\S]*?\n\$\$;/,
+)?.[0];
+assert.ok(webhookBody, "completion push webhook trigger function missing");
+assert.match(webhookBody, /set search_path = ''/, "webhook must pin its search path");
+assert.match(webhookBody, /vault\.decrypted_secrets/, "webhook configuration must use Vault");
+assert.match(webhookBody, /net\.http_post\(/, "webhook must enqueue asynchronous HTTP");
+assert.match(webhookBody, /exception when others then/, "enqueue failure must preserve completion");
+assert.match(
+  sql,
+  /revoke all on function private\.enqueue_completion_push\(\) from public, anon, authenticated/,
+  "webhook must not be directly callable by clients",
+);
+assert.match(
+  sql,
+  /create trigger send_completion_push\s+after insert on public\.notifications/,
+  "webhook must only watch notification INSERTs",
+);
+assert.match(
+  sql,
+  /an api-callable function exposes webhook internals/,
+  "migration must reject public RPC bridges into webhook internals",
+);
+assert.doesNotMatch(webhookBody, /[a-f0-9]{64}/, "webhook must not embed a secret literal");
+
 console.log(
   `SQL contract checks passed (${protectedTables.length} RLS tables, ${migrations.length} migration).`,
 );

@@ -91,7 +91,12 @@ set invite_code = case user_id
   when '00000000-0000-0000-0000-000000000001' then 'LEMONA0001'
   when '00000000-0000-0000-0000-000000000002' then 'LEMONB0001'
   else 'LEMONC0001'
-end;
+end
+where user_id in (
+  '00000000-0000-0000-0000-000000000001',
+  '00000000-0000-0000-0000-000000000002',
+  '00000000-0000-0000-0000-000000000003'
+);
 
 insert into public.pet_unlocks (user_id, item_key, item_kind)
 values ('00000000-0000-0000-0000-000000000001', 'sunny-yellow', 'color');
