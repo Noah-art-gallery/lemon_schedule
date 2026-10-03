@@ -2,9 +2,13 @@
 
 Node.js 22 이상과 npm을 준비한 뒤 저장소 루트에서 `npm ci`를 실행한다. `.env.local`에 `.env.example`의 공개 Supabase URL·publishable key를 넣으면 실제 계정 모드가 되고, 둘 다 비어 있는 비프로덕션 환경에서는 `npm run dev:demo`로 샘플 화면을 확인한다.
 
+현재 앱은 서울 리전의 전용 `lemontodolist` 프로젝트 (`jthltqvcoezawoplaxkd`)를 사용한다. 공개 URL은 `https://jthltqvcoezawoplaxkd.supabase.co`이고 `.env.local`은 Git에서 제외되므로 다른 개발 환경에서는 공개 키를 따로 설정한다. 8개 migration과 발송 함수 v1은 플러그인으로 적용했으며 CLI 로그인·프로젝트 link는 별도다. 원격 migration history는 로컬 파일의 버전과 일치한다.
+
+현재 회원가입은 이메일·비밀번호 입력 후 즉시 세션을 받는 계약이다. [프로젝트 인증 설정](https://supabase.com/dashboard/project/jthltqvcoezawoplaxkd/auth/providers)의 User Signups에서 Confirm email을 끄고 저장해야 이 계약으로 테스트할 수 있다. 이메일 인증을 유지하려면 가입 대기·확인 흐름을 먼저 추가한다. Supabase 기본 가입·로그인 설정은 로컬 `config.toml`만 수정해도 클라우드에 자동 반영되지 않는다.
+
 개발 서버는 `npm run dev`로 열고, 정적 산출물은 `npm run build`가 `out`에 만든다. 검증은 `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm run typecheck:edge`, `npm test -- --run`, `npm run test:db-contract`, `npm run test:e2e` 순서로 수행한다. E2E는 먼저 별도 터미널에서 `npm run dev:demo` 서버를 띄운 뒤 실행한다. `test:e2e:external`은 같은 동작을 하는 기존 별칭이다. Windows에서 Playwright가 직접 띄운 Next 개발 서버의 프로세스 정리가 멈추는 현상을 피하려고 서버를 별도로 관리한다.
 
-Supabase migration은 연결된 프로젝트에 순서대로 적용하고, 로컬 데이터베이스를 사용할 수 있을 때 `npm run db:start`, `npm run db:reset`, `npm run test:db`를 실행한다. Docker 또는 로컬 Supabase가 없으면 해당 세 검사는 실패로 기록하고 정적 계약 검사만 통과한 것으로 보고한다.
+Supabase migration은 연결된 프로젝트에 순서대로 적용하고, 로컬 데이터베이스를 사용할 수 있을 때 `npm run db:start`, `npm run db:reset`, `npm run test:db`를 실행한다. Docker 또는 로컬 Supabase가 없으면 해당 세 검사는 미실행 사유를 기록한다. 원격 pgTAP 검증은 테스트 SQL의 트랜잭션과 마지막 rollback을 유지하며 별도 결과로 기록한다. 이미 적용된 버전과 파일 내용을 확인한 뒤 미적용 migration만 순서대로 적용한다.
 
 Capacitor 준비는 정적 빌드 후 `npm run cap:sync`로 웹 자산을 동기화한다. Android 프로젝트가 생성된 환경에서는 `npm run cap:android`로 Android Studio를 열고 실제 기기 알림·권한을 확인한다. iOS 서명과 APNs 자격은 macOS와 Apple 계정이 필요하므로 Windows에서는 구성 파일과 동기화까지만 확인한다.
 

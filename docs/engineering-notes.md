@@ -6,6 +6,6 @@
 
 Next.js는 정적 export를 사용하므로 서버 전용 런타임 API를 라우트에 추가하지 않는다. Supabase가 설정되지 않은 개발 환경은 명시적인 비프로덕션 데모 모드에서만 샘플 데이터를 보여 주며, 데모 성공을 실제 포인트·알림 저장으로 표현하지 않는다.
 
-Playwright 브라우저 바이너리는 디스크가 부족한 환경에서 재다운로드하지 말고 시스템 Chrome과 이미 실행한 서버를 사용한다. Docker가 없는 환경에서는 Supabase pgTAP 결과를 추정하지 않고 정적 SQL 계약 검사와 미실행 사유를 별도로 기록한다.
+Playwright 브라우저 바이너리는 디스크가 부족한 환경에서 재다운로드하지 말고 시스템 Chrome과 이미 실행한 서버를 사용한다. Docker가 없는 환경에서는 로컬 Supabase pgTAP 결과를 추정하지 않는다. 원격 DB에서 실제 실행한 검사는 로컬 reset과 구분해 기록하고, 검사용 계정·데이터는 트랜잭션 rollback으로 남기지 않는다. identity sequence는 rollback해도 증가하므로 행동 검사는 ID 1을 가정하지 않고 생성된 ID를 저장해 사용한다. pgTAP `throws_ok`에는 SQLSTATE·예상 오류·설명을 명시하고, 뷰 옵션은 `pg_options_to_table`로 읽어 `true`/`on` 표현 차이에 의존하지 않는다.
 
 Windows에서 Playwright가 `webServer`로 Next 개발 서버를 직접 띄우면 검사가 끝나도 프로세스 정리 단계에서 멈출 수 있다. 별도 터미널에서 `npm run dev:demo`를 실행하고 `npm run test:e2e`를 호출하면 종료 코드 0을 확인할 수 있다. 웹 산출물을 네이티브에 반영할 때는 `npm run build`가 만든 `out`을 확인한 뒤 `npm run cap:sync`를 실행하고 Android/iOS 자산 복사 로그를 확인한다.

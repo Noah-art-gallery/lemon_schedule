@@ -193,6 +193,16 @@ assert.doesNotMatch(
 );
 assert.doesNotMatch(sql, /auth\.role\(\)/, "deprecated auth.role() must not be used");
 
+const visibilityMigration = readFileSync(
+  join(migrationDirectory, "20260919170000_connection_visibility.sql"),
+  "utf8",
+).toLowerCase();
+assert.match(
+  visibilityMigration,
+  /and profiles\.id in \(request\.requester_id, request\.addressee_id\)/,
+  "pending-request visibility must compare the outer profile UUID, not the request ID",
+);
+
 console.log(
   `SQL contract checks passed (${protectedTables.length} RLS tables, ${migrations.length} migration).`,
 );

@@ -37,7 +37,12 @@ select extensions.ok(
     select 1
     from pg_class as relation
     where relation.oid = 'public.daily_progress'::regclass
-      and 'security_invoker=on' = any(coalesce(relation.reloptions, array[]::text[]))
+      and exists (
+        select 1
+        from pg_options_to_table(relation.reloptions) as option
+        where option.option_name = 'security_invoker'
+          and option.option_value::boolean
+      )
   ),
   'daily progress view executes with caller permissions'
 );

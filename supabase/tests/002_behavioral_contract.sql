@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(100);
+select extensions.plan(103);
 
 select extensions.throws_ok(
   $$insert into auth.users (
@@ -154,10 +154,14 @@ select extensions.lives_ok(
 );
 select extensions.throws_ok(
   $$insert into public.pets (user_id) values (auth.uid())$$,
+  '42501',
+  'permission denied for table pets',
   'authenticated users cannot create a second pet row'
 );
 select extensions.throws_ok(
   $$delete from public.pets where user_id = auth.uid()$$,
+  '42501',
+  'permission denied for table pets',
   'authenticated users cannot delete their provisioned pet row'
 );
 select extensions.is(
@@ -172,10 +176,14 @@ select extensions.lives_ok(
 );
 select extensions.throws_ok(
   $$select public.create_task_schedule(repeat('a', 81), current_date, null, 'none')$$,
+  '23514',
+  'new row for relation "tasks" violates check constraint "tasks_title_check"',
   'task title cannot exceed 80 stored characters'
 );
 select extensions.throws_ok(
   $$select public.create_task_schedule(repeat(' ', 80), current_date, null, 'none')$$,
+  '23514',
+  'new row for relation "tasks" violates check constraint "tasks_title_check"',
   'task title cannot contain only whitespace'
 );
 select extensions.is(
@@ -192,6 +200,8 @@ select extensions.is(
 );
 select extensions.throws_ok(
   $$insert into public.tasks (owner_id, title, due_date) values ('00000000-0000-0000-0000-000000000001', 'Forged task', current_date)$$,
+  '42501',
+  'permission denied for table tasks',
   'nonowner cannot create a task for somebody else'
 );
 select extensions.is(
@@ -238,7 +248,25 @@ select extensions.throws_ok(
   'self connection requests are rejected'
 );
 
+select extensions.is(
+  (select count(*)::integer from public.profiles where display_name = 'Friend'),
+  1,
+  'pending requester can read the addressee public nickname'
+);
+
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000003', true);
+select extensions.is(
+  (select count(*)::integer from public.profiles where display_name in ('Owner', 'Friend')),
+  0,
+  'unrelated user cannot read pending-request participant nicknames'
+);
+
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
+select extensions.is(
+  (select count(*)::integer from public.profiles where display_name = 'Owner'),
+  1,
+  'pending addressee can read the requester public nickname'
+);
 select extensions.lives_ok(
   $$select public.respond_connection_request((select id from public.connection_requests where status = 'pending'), true)$$,
   'addressee can accept a pending request'
@@ -263,6 +291,8 @@ select extensions.throws_ok(
       'Forged reward',
       'none'
     )$$,
+  '42501',
+  'permission denied for table task_occurrences',
   'authenticated users cannot forge reward-bearing occurrences'
 );
 select extensions.is(
@@ -287,6 +317,8 @@ select extensions.is(
 );
 select extensions.throws_ok(
   $$update public.tasks set title = 'Friend edit' where title = 'Owner task'$$,
+  '42501',
+  'permission denied for table tasks',
   'friend update is safely filtered by RLS'
 );
 select extensions.is(
@@ -338,6 +370,12 @@ select extensions.is(
   'first completion creates one immutable event'
 );
 
+select set_config(
+  'test.owner_occurrence_id',
+  (select id::text from public.task_occurrences where title_snapshot = 'Owner task'),
+  true
+);
+
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
 select extensions.is(
   (select count(*)::integer from public.notifications where notification_type = 'task_completed'),
@@ -376,6 +414,8 @@ select extensions.is(
   1,
   'friend has one encouragement per occurrence'
 );
+
+select set_config('test.encouragement_id', (select id::text from public.encouragements), true);
 
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
 select extensions.lives_ok(
@@ -469,6 +509,8 @@ select extensions.is(
 );
 select extensions.throws_ok(
   $$select public.upsert_encouragement((select id from public.task_occurrences limit 1), 'heart', '또 해냈어!')$$,
+  'P0001',
+  'ENCOURAGEMENT_NOT_ALLOWED',
   'disconnected user cannot write an encouragement'
 );
 select extensions.lives_ok(
@@ -543,10 +585,14 @@ select extensions.is(
 );
 select extensions.throws_ok(
   $$update public.tasks set title = 'Blocked edit' where owner_id = '00000000-0000-0000-0000-000000000001'$$,
+  '42501',
+  'permission denied for table tasks',
   'blocked task mutation is safely filtered by RLS'
 );
 select extensions.throws_ok(
   $$select public.upsert_encouragement((select id from public.task_occurrences limit 1), 'heart', '보이면 안 돼')$$,
+  'P0001',
+  'ENCOURAGEMENT_NOT_ALLOWED',
   'blocked user cannot write an encouragement'
 );
 select extensions.throws_ok(
@@ -614,11 +660,14 @@ select extensions.is(
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
 select extensions.throws_ok(
-  $$select public.upsert_encouragement(1, 'heart', '삭제된 할 일')$$,
+  $$select public.upsert_encouragement(current_setting('test.owner_occurrence_id')::bigint, 'heart', '삭제된 할 일')$$,
+  'P0001',
+  'ENCOURAGEMENT_NOT_ALLOWED',
   'connected user cannot encourage a logically deleted task'
 );
-select extensions.lives_ok(
-  $$select public.delete_encouragement(1)$$,
+select extensions.is(
+  public.delete_encouragement(current_setting('test.encouragement_id')::bigint),
+  true,
   'author deletion records a tombstone even after disconnect'
 );
 

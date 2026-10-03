@@ -10,7 +10,7 @@ using (
     from public.connection_requests as request
     where request.status = 'pending'
       and (select auth.uid()) in (request.requester_id, request.addressee_id)
-      and id in (request.requester_id, request.addressee_id)
+      and profiles.id in (request.requester_id, request.addressee_id)
   )
 );
 
