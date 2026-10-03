@@ -15,11 +15,13 @@
 
 2026-10-03 서울 리전의 전용 Supabase `lemontodolist` (`jthltqvcoezawoplaxkd`)에 8개 migration을 적용했다. 미적용 상태였던 친구 프로필 정책의 UUID/bigint 컬럼 이름 충돌을 수정하고, 명시적으로 프로필 ID를 참조하는 후속 migration과 대기 요청 공개 범위 검사를 추가했다. 원격 migration 버전은 저장소 파일의 버전과 일치하도록 정리했다. 클라우드 DB에서 pgTAP 보안 검사 16개·행동 검사 103개가 모두 통과했으며, 검사 트랜잭션을 rollback한 뒤 계정·프로필·할 일 0건을 확인했다. 익명 REST 조회와 완료 RPC는 401/42501로 거부됐다.
 
-로컬 `.env.local`에는 공개 URL·publishable key만 설정했고 Git에서 제외했다. 실제 연결 환경의 정적 빌드와 Android/iOS `cap:sync`가 통과했다. `send-completion-push` Edge Function v1도 배포했으며 GET 405와 웹훅 비밀값 미설정 POST 503 차단을 확인했다. 이메일 확인 옵션은 아직 켜져 있고 Firebase/APNs·웹훅 자격은 미설정이므로 즉시 가입과 휴대폰 푸시의 종단 간 성공은 주장하지 않는다.
+로컬 `.env.local`에는 공개 URL·publishable key만 설정했고 Git에서 제외했다. 실제 연결 환경의 정적 빌드와 Android/iOS `cap:sync`가 통과했다. `send-completion-push` Edge Function v1도 배포했으며 GET 405와 웹훅 비밀값 미설정 POST 503 차단을 확인했다. Firebase/APNs·웹훅 자격은 미설정이므로 휴대폰 푸시 성공은 아직 검증되지 않았다.
+
+2026-10-03 사용자가 Confirm email을 끈 뒤 Auth settings 200과 `mailer_autoconfirm=true`를 확인했다. 공개 키·실제 Auth 계정으로 동시 완료와 수락/차단 경합 통합 검사 2개가 Node 환경에서 통과했다. 생성된 4개 테스트 계정의 비밀번호 로그인, 친구 완료 조회, 비공개 프로필·펫·기기 토큰 격리, 비연결 사용자 할 일 차단, 응원 알림과 재완료 무보상도 실제 API에서 확인했다. 전역 로그아웃 후 이번 검사에서 생성한 UUID·이메일이 정확히 일치하는 4개 계정만 삭제했으며 계정·프로필·할 일 0건을 확인했다. 실제 브라우저·모바일 화면 검증과 구분되는 API 검증 결과다.
 
 ## 남은 일
 
-- 즉시 가입 계약에 맞춰 전용 프로젝트의 Confirm email 옵션을 끈 뒤 실제 Auth 가입·로그인과 동시 완료·차단 경합 통합 검사 2개를 실행한다. 배포 도메인과 이메일 운영 설정도 확정한다.
+- 배포 도메인과 이메일 운영 설정을 확정한다. 즉시 가입·비밀번호 로그인과 동시 완료·차단 경합 API 검사는 완료했다.
 - Docker/Supabase 런타임 환경에서 빈 DB reset과 migration 재적용을 검증한다. 클라우드 적용·pgTAP 검사는 완료했지만 로컬 reset은 아직 미실행이다.
 - Android SDK/Java와 iOS macOS 서명 환경, Firebase/APNs·웹훅 비밀값을 준비하고 Database Webhook을 연결한 뒤 네이티브 빌드·실기기 푸시를 확인한다.
 - 오래된·먼 미래 친구 기록은 1년 단위로 더 불러올 수 있으며, 대량 발생 건 페이지네이션을 실제 DB에서 검증한다.

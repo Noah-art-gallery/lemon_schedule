@@ -4,10 +4,6 @@
 
 Docker/Supabase 로컬 서비스가 실행되지 않는 환경에서는 `supabase test db`가 데이터베이스 연결 전에 실패한다. 2026-10-03 전용 클라우드 프로젝트에서 migration 적용과 pgTAP 보안 16개·행동 103개는 실제 통과했다. 로컬 reset과 빈 DB 재적용은 별도 미검증이므로 Docker가 가능한 환경에서 다시 실행해야 한다.
 
-## 즉시 가입을 위한 이메일 확인 설정
-
-전용 프로젝트의 Auth settings 조회는 200이지만 `mailer_autoconfirm=false`다. 현재 앱은 가입 응답에 세션이 있는 즉시 로그인 계약을 사용하므로 Confirm email이 켜져 있으면 가입 완료를 성공으로 표시하지 않는다. 플러그인은 Auth 설정 변경 기능을 제공하지 않고 CLI는 로그인되지 않았으며 브라우저 대시보드도 로그인 화면으로 이동했다. 대시보드 Authentication → Sign In / Providers에서 Confirm email을 끄고 저장한 뒤 실제 가입·로그인과 동시 요청 통합 검사를 실행해야 한다. 이메일 인증을 유지하려면 별도로 가입 대기·확인 안내 흐름을 구현해야 한다.
-
 ## 모바일 푸시 자격 미설정
 
 Windows 개발 환경에는 Android SDK와 APNs 서명 자격이 보장되지 않는다. 따라서 기기 토큰 등록 코드는 준비했지만 실제 알림 수신·탭 이동 증거는 남아 있지 않다. Android SDK/Java와 Firebase, iOS APNs 자격을 준비한 뒤 실기기에서 권한 허용·거부·토큰 교체를 확인해야 한다.

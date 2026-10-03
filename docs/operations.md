@@ -4,7 +4,9 @@ Node.js 22 이상과 npm을 준비한 뒤 저장소 루트에서 `npm ci`를 실
 
 현재 앱은 서울 리전의 전용 `lemontodolist` 프로젝트 (`jthltqvcoezawoplaxkd`)를 사용한다. 공개 URL은 `https://jthltqvcoezawoplaxkd.supabase.co`이고 `.env.local`은 Git에서 제외되므로 다른 개발 환경에서는 공개 키를 따로 설정한다. 8개 migration과 발송 함수 v1은 플러그인으로 적용했으며 CLI 로그인·프로젝트 link는 별도다. 원격 migration history는 로컬 파일의 버전과 일치한다.
 
-현재 회원가입은 이메일·비밀번호 입력 후 즉시 세션을 받는 계약이다. [프로젝트 인증 설정](https://supabase.com/dashboard/project/jthltqvcoezawoplaxkd/auth/providers)의 User Signups에서 Confirm email을 끄고 저장해야 이 계약으로 테스트할 수 있다. 이메일 인증을 유지하려면 가입 대기·확인 흐름을 먼저 추가한다. Supabase 기본 가입·로그인 설정은 로컬 `config.toml`만 수정해도 클라우드에 자동 반영되지 않는다.
+현재 회원가입은 이메일·비밀번호 입력 후 즉시 세션을 받는 계약이다. 2026-10-03 사용자가 [프로젝트 인증 설정](https://supabase.com/dashboard/project/jthltqvcoezawoplaxkd/auth/providers)의 Confirm email을 끈 뒤 실제 가입·로그인 검증을 완료했다. 새 프로젝트도 즉시 가입 계약을 사용할 경우 같은 옵션을 끈다. 이메일 인증을 유지하려면 가입 대기·확인 흐름을 먼저 추가한다. Supabase 기본 가입·로그인 설정은 로컬 `config.toml`만 수정해도 클라우드에 자동 반영되지 않는다.
+
+현재 환경에서 실제 통합 검사는 PowerShell에서 `$env:RUN_SUPABASE_INTEGRATION = '1'`을 설정한 뒤 `node --env-file=.env.local node_modules/vitest/vitest.mjs run src/lib/supabase/supabase.integration.test.ts --environment node`로 실행했다. 이 검사는 실제 Auth 테스트 계정을 생성하므로 완료 후 해당 검사에서 생성된 UUID·이메일을 확인하고 전역 로그아웃과 계정 정리를 수행한다. 사용자 계정이나 생성 시점만으로 넓게 삭제하지 않는다.
 
 개발 서버는 `npm run dev`로 열고, 정적 산출물은 `npm run build`가 `out`에 만든다. 검증은 `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm run typecheck:edge`, `npm test -- --run`, `npm run test:db-contract`, `npm run test:e2e` 순서로 수행한다. E2E는 먼저 별도 터미널에서 `npm run dev:demo` 서버를 띄운 뒤 실행한다. `test:e2e:external`은 같은 동작을 하는 기존 별칭이다. Windows에서 Playwright가 직접 띄운 Next 개발 서버의 프로세스 정리가 멈추는 현상을 피하려고 서버를 별도로 관리한다.
 
