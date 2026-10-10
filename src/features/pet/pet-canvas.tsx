@@ -1,6 +1,6 @@
 "use client";
 
-import { Eraser, Save } from "lucide-react";
+import { Eraser, Pencil, Save } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ export function PetCanvas({ onSave, strokeColor }: PetCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
   const [saving, setSaving] = useState(false);
+  const [tool, setTool] = useState<"brush" | "eraser">("brush");
+  const [opacity, setOpacity] = useState(1);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -32,8 +34,12 @@ export function PetCanvas({ onSave, strokeColor }: PetCanvasProps) {
 
   useEffect(() => {
     const context = canvasRef.current?.getContext("2d");
-    if (context) context.strokeStyle = strokeColor;
-  }, [strokeColor]);
+    if (!context) return;
+    context.strokeStyle = strokeColor;
+    context.globalAlpha = opacity;
+    context.globalCompositeOperation = tool === "eraser" ? "destination-out" : "source-over";
+    context.lineWidth = tool === "eraser" ? 22 : 7;
+  }, [opacity, strokeColor, tool]);
 
   function point(event: PointerEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current;
@@ -99,9 +105,46 @@ export function PetCanvas({ onSave, strokeColor }: PetCanvasProps) {
         onPointerCancel={stop}
         onPointerLeave={stop}
       />
+      <div className="pet-drawing__toolbar">
+        <div className="pet-drawing__tool-group" role="group" aria-label="그리기 도구">
+          <Button
+            size="sm"
+            variant={tool === "brush" ? "secondary" : "ghost"}
+            onClick={() => setTool("brush")}
+            disabled={saving}
+            aria-pressed={tool === "brush"}
+          >
+            <Pencil size={16} aria-hidden="true" /> 펜
+          </Button>
+          <Button
+            size="sm"
+            variant={tool === "eraser" ? "secondary" : "ghost"}
+            onClick={() => setTool("eraser")}
+            disabled={saving}
+            aria-pressed={tool === "eraser"}
+          >
+            <Eraser size={16} aria-hidden="true" /> 지우개
+          </Button>
+        </div>
+        <div className="pet-drawing__opacity" role="group" aria-label="선 농도">
+          <span>농도</span>
+          {[0.4, 0.7, 1].map((value) => (
+            <Button
+              key={value}
+              size="sm"
+              variant={opacity === value ? "secondary" : "ghost"}
+              onClick={() => setOpacity(value)}
+              disabled={saving}
+              aria-pressed={opacity === value}
+            >
+              {Math.round(value * 100)}%
+            </Button>
+          ))}
+        </div>
+      </div>
       <div className="pet-drawing__actions">
         <Button size="sm" variant="ghost" onClick={clear} disabled={saving}>
-          <Eraser size={16} aria-hidden="true" /> 다시 그리기
+          <Eraser size={16} aria-hidden="true" /> 전체 지우기
         </Button>
         <Button size="sm" onClick={() => void save()} disabled={saving}>
           <Save size={16} aria-hidden="true" /> {saving ? "저장 중…" : "펫 저장"}

@@ -14,3 +14,6 @@ android/.gradle
 android/app/build
 ios/App/Pods
 ios/App/DerivedData
+
+.vercel
+.env*

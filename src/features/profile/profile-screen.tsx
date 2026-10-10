@@ -22,7 +22,7 @@ import {
 } from "./profile-service";
 
 const demoProfile: ProfileDetails = {
-  displayName: "레몬 친구",
+  displayName: "Lemon Schedule",
   timeZone: "Asia/Seoul",
   inviteCode: "LEMON0001",
   lemonPoints: 2,

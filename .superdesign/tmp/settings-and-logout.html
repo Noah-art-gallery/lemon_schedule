@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lemon Schedule 설정</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+  </head>
+  <body>
+    <div class="min-h-screen bg-[#fffdf0] px-4 pb-8 pt-5 font-sans text-[#2b321d]">
+      <header class="mx-auto flex max-w-md items-center justify-between">
+        <a
+          id="home-brand"
+          href="#home"
+          class="flex items-center gap-2.5 no-underline text-[#2b321d]"
+        >
+          <img
+            src="https://vgbujcuwptvheqijyjbe.supabase.co/storage/v1/object/public/hmac-uploads/projects/46626bba-1c3a-4e3f-8733-6b0370623f1f/brand-assets/lemon-schedule-logo/lemon-schedule-logo.jpg"
+            alt="Lemon Schedule 로고"
+            class="h-10 w-10 rounded-xl object-cover shadow-sm"
+          />
+          <span class="text-lg font-extrabold tracking-tight">Lemon Schedule</span>
+        </a>
+        <a
+          id="notifications"
+          href="#notifications"
+          class="grid h-11 w-11 place-items-center rounded-full border border-[#e9dfba] bg-white text-[#52612f] shadow-sm"
+          aria-label="알림 열기"
+          ><iconify-icon icon="lucide:bell" width="20"></iconify-icon
+        ></a>
+      </header>
+
+      <main class="mx-auto mt-8 max-w-md">
+        <a
+          id="back-profile"
+          href="#profile"
+          class="mb-5 inline-flex items-center gap-1 text-sm font-semibold text-[#69773c]"
+          ><iconify-icon icon="lucide:chevron-left" width="17"></iconify-icon> 내 정보</a
+        >
+        <p class="text-xs font-extrabold tracking-[0.16em] text-[#9b6d08]">SETTINGS</p>
+        <h1 class="mt-2 text-3xl font-extrabold tracking-tight">설정</h1>
+        <p class="mt-2 text-sm leading-6 text-[#67705b]">내 계정과 앱 환경을 관리해요.</p>
+
+        <section
+          class="mt-6 rounded-3xl border border-[#f0e7c2] bg-white p-5 shadow-[0_12px_32px_rgba(111,92,25,0.08)]"
+        >
+          <div class="flex items-center gap-3">
+            <div
+              class="grid h-12 w-12 place-items-center rounded-2xl bg-[#fff7c7] text-xl font-extrabold text-[#9b6d08]"
+            >
+              L
+            </div>
+            <div>
+              <p class="text-xs font-bold tracking-[0.12em] text-[#9b6d08]">MY ACCOUNT</p>
+              <h2 class="mt-1 text-lg font-extrabold">Lemon Schedule</h2>
+            </div>
+          </div>
+          <a
+            id="edit-profile"
+            href="#edit-profile"
+            class="mt-5 flex items-center justify-between rounded-2xl bg-[#fffdf0] px-4 py-3.5 text-sm font-bold text-[#46502b]"
+            ><span class="flex items-center gap-3"
+              ><iconify-icon icon="lucide:user-round" width="18"></iconify-icon> 프로필 수정</span
+            ><iconify-icon icon="lucide:chevron-right" width="18"></iconify-icon
+          ></a>
+        </section>
+
+        <section
+          class="mt-4 rounded-3xl border border-[#f0e7c2] bg-white p-2 shadow-[0_12px_32px_rgba(111,92,25,0.08)]"
+        >
+          <a
+            id="notification-settings"
+            href="#notification-settings"
+            class="flex items-center justify-between rounded-2xl px-4 py-4 text-sm font-bold text-[#46502b]"
+            ><span class="flex items-center gap-3"
+              ><span class="grid h-9 w-9 place-items-center rounded-xl bg-[#eef6d9] text-[#587329]"
+                ><iconify-icon icon="lucide:bell" width="18"></iconify-icon
+              ></span>
+              알림 설정</span
+            ><iconify-icon icon="lucide:chevron-right" width="18"></iconify-icon
+          ></a>
+          <div class="mx-4 border-t border-[#f4efda]"></div>
+          <a
+            id="help"
+            href="#help"
+            class="flex items-center justify-between rounded-2xl px-4 py-4 text-sm font-bold text-[#46502b]"
+            ><span class="flex items-center gap-3"
+              ><span class="grid h-9 w-9 place-items-center rounded-xl bg-[#fff7c7] text-[#9b6d08]"
+                ><iconify-icon icon="lucide:circle-help" width="18"></iconify-icon
+              ></span>
+              도움말</span
+            ><iconify-icon icon="lucide:chevron-right" width="18"></iconify-icon
+          ></a>
+        </section>
+
+        <section class="mt-7 rounded-3xl border border-[#f0e7c2] bg-[#fffdf7] p-5">
+          <p class="text-xs font-extrabold tracking-[0.16em] text-[#9b6d08]">ACCOUNT</p>
+          <h2 class="mt-2 text-lg font-extrabold">이 기기에서 로그아웃</h2>
+          <p class="mt-1 text-sm leading-6 text-[#67705b]">
+            현재 기기에서만 로그아웃됩니다. 계정과 기록은 그대로 유지돼요.
+          </p>
+          <a
+            id="logout"
+            href="#logout-confirm"
+            class="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-[#d77a62] bg-white px-4 py-3.5 text-sm font-extrabold text-[#b34f3c]"
+            ><iconify-icon icon="lucide:log-out" width="18"></iconify-icon> 로그아웃</a
+          >
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

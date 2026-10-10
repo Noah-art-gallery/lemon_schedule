@@ -1,0 +1,5 @@
+# Lemon Schedule design system
+
+Lemon Schedule is a mobile-first, friendly social todo app. Preserve the existing warm lemon palette, leaf-green accents, rounded soft cards, compact heavy headings, uppercase eyebrow labels, and Lucide line icons. The app has a logo image and “Lemon Schedule” wordmark in the top bar; do not replace it with initials or emoji.
+
+For settings, design a simple mobile profile continuation rather than a dense desktop dashboard. It should have a clearly labelled settings entry in the top-right header (gear icon), and a dedicated settings view with personal account actions. Group destructive actions at the bottom in a distinct but calm section. The only required destructive account action is a full-width danger-outline “로그아웃” button, with explanatory copy that signing out only ends this device session. Use existing Button variants, Card surfaces, 14–24px spacing, and the lemon / leaf visual system. Do not introduce new colors, fonts, gradients, or icon families.

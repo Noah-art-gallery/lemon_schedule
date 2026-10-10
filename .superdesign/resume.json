@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "targets": {
+    "settings-panel": {
+      "targetKind": "new-ui",
+      "projectId": "46626bba-1c3a-4e3f-8733-6b0370623f1f",
+      "activeDraftId": "74594bc4-01e7-4e97-aa4d-2af8ae9bc1fe",
+      "designSystemPath": ".superdesign/design-system.md",
+      "referenceIds": ["lemon-schedule-logo"],
+      "brandAssets": {
+        "logo": {
+          "assetKey": "lemon-schedule-logo",
+          "url": "https://vgbujcuwptvheqijyjbe.supabase.co/storage/v1/object/public/hmac-uploads/projects/46626bba-1c3a-4e3f-8733-6b0370623f1f/brand-assets/lemon-schedule-logo/lemon-schedule-logo.jpg",
+          "sourcePath": "public/images/lemon-schedule-logo.jpg"
+        }
+      },
+      "contextFiles": [
+        ".superdesign/design-system.md",
+        "src/features/profile/profile-screen.tsx",
+        "src/components/layout/top-bar.tsx",
+        "src/components/ui/button.tsx",
+        "src/components/ui/card.tsx",
+        "src/app/globals.css:133:190",
+        "src/app/globals.css:313:418",
+        "src/app/globals.css:903:970"
+      ],
+      "fingerprints": {
+        ".superdesign/design-system.md": "0DF3F445FA8CB6297E840B7CD4DE28959954BB1922996C47B3A07C29C4A5C83E",
+        "src/features/profile/profile-screen.tsx": "CA61291A0C3CA000C822EB34ECA19250FCBFA85A61BEF02B2891E00F8675371B",
+        "src/components/layout/top-bar.tsx": "DD0AE9F5EA51C4906E214D9E3745DD88B9D131223343BC221D22ADB651C726E7",
+        "src/components/ui/button.tsx": "BF44F3A8E806B7A01F8F5FBF886C5D5A02FE97BBC868928F45746D57662D2ECD",
+        "src/components/ui/card.tsx": "C5A0590B963116767DC7885322E6F51266F2478AC37044319BD42A633808A216",
+        "src/app/globals.css": "358459CAEC5A3912BF883F810721FB6CDA45CCB7D85A7026AC2457EEFF49E11F"
+      },
+      "components": [],
+      "drafts": {
+        "74594bc4-01e7-4e97-aa4d-2af8ae9bc1fe": {
+          "title": "Settings and logout",
+          "visualDirection": "mobile lemon-themed account settings with separate logout action",
+          "currentVersion": 1
+        }
+      },
+      "updatedAt": "2026-10-10T06:28:11.208Z"
+    }
+  }
+}
