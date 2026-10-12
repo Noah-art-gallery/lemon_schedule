@@ -13,7 +13,7 @@ const icons: Record<StateKind, LucideIcon> = {
 interface StatePanelProps {
   kind: StateKind;
   title: string;
-  description: string;
+  description?: string;
   action?: ReactNode;
 }
 
@@ -26,7 +26,7 @@ export function StatePanel({ kind, title, description, action }: StatePanelProps
         <Icon size={24} className={kind === "loading" ? "spin" : ""} />
       </span>
       <h2>{title}</h2>
-      <p>{description}</p>
+      {description ? <p>{description}</p> : null}
       {action ? <div className="state-panel__action">{action}</div> : null}
     </section>
   );

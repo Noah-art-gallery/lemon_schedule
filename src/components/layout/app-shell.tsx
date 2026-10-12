@@ -74,7 +74,7 @@ export function AppShell({ children, notificationCount }: AppShellProps) {
   if (status === "loading" || status === "unauthenticated") {
     return (
       <main className="route-loading" aria-live="polite">
-        <span className="button__spinner" aria-hidden="true" /> 앱을 준비하고 있어요.
+        <span className="button__spinner" aria-hidden="true" /> 불러오는 중
       </main>
     );
   }
@@ -89,11 +89,7 @@ export function AppShell({ children, notificationCount }: AppShellProps) {
       </aside>
       <div className="app-shell__body">
         <TopBar notificationCount={notificationCount ?? unreadCount} />
-        {demo ? (
-          <p className="demo-banner">
-            데모 모드 · Supabase를 연결하면 실제 계정과 데이터가 저장돼요.
-          </p>
-        ) : null}
+        {demo ? <p className="demo-banner">미리보기 · 실제 저장 안 됨</p> : null}
         <main id="main-content" className="page-content" tabIndex={-1}>
           {children}
         </main>

@@ -1,11 +1,11 @@
 "use client";
 
-import { Home, PawPrint, Sprout, UserRound, UsersRound } from "lucide-react";
+import { ListTodo, PawPrint, UserRound, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navigationItems = [
-  { href: "/", label: "홈", icon: Home },
+  { href: "/", label: "할 일", icon: ListTodo },
   { href: "/friends", label: "친구", icon: UsersRound },
   { href: "/pet", label: "펫", icon: PawPrint },
   { href: "/profile", label: "내 정보", icon: UserRound },
@@ -16,9 +16,6 @@ export function BottomNav() {
 
   return (
     <nav className="bottom-nav" aria-label="주요 메뉴">
-      <span className="bottom-nav__sprout" aria-hidden="true">
-        <Sprout size={18} />
-      </span>
       {navigationItems.map(({ href, label, icon: Icon }) => {
         const active = href === "/" ? pathname === href : pathname.startsWith(href);
 
