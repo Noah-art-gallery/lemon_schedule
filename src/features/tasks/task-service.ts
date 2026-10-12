@@ -245,3 +245,37 @@ export async function getOccurrenceDetail(input: {
     data,
   );
 }
+
+/** Read the schedule source, never derive a monthly anchor from a clamped occurrence. */
+export async function getTaskSource(taskId: number): Promise<TaskInput> {
+  const { data, error } = await getSupabaseClient()
+    .from("tasks")
+    .select("title, due_date, due_time, recurrence")
+    .eq("id", taskId)
+    .is("deleted_at", null)
+    .single();
+  if (error || !data) throw new AppError("NOT_FOUND", "수정할 할 일을 찾지 못했어요");
+  return {
+    title: data.title,
+    dueDate: data.due_date,
+    dueTime: data.due_time?.slice(0, 5) ?? "",
+    recurrence: data.recurrence,
+  };
+}
+
+/** Explicitly requested windows can grow beyond the RPC's 800-day per-request limit. */
+export async function listOccurrenceWindow(input: { ownerId: string; from: string; to: string }) {
+  const { addUtcDays } = await import("./recurrence");
+  const occurrences: TaskOccurrenceRow[] = [];
+  let from = input.from;
+  let today = "";
+  do {
+    const boundary = addUtcDays(from, 800);
+    const to = boundary < input.to ? boundary : input.to;
+    const page = await listOccurrences({ ownerId: input.ownerId, from, to });
+    occurrences.push(...page.occurrences);
+    today = page.today;
+    from = addUtcDays(to, 1);
+  } while (from <= input.to);
+  return { occurrences, today };
+}

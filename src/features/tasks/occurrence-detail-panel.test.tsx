@@ -1,0 +1,130 @@
+import { deleteEncouragement } from "@/features/encouragements/encouragement-service";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
+import { OccurrenceDetailPanel } from "./occurrence-detail-panel";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { getOccurrenceDetail, completeOccurrence, getTaskSource } from "./task-service";
+import { demoGetDetail } from "./demo-task-store";
+vi.mock("@/features/auth/auth-provider", () => ({
+  useAuth: () => ({ demo: false, user: { id: "demo" } }),
+}));
+vi.mock("./task-service", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./task-service")>()),
+  getOccurrenceDetail: vi.fn(),
+  completeOccurrence: vi.fn(),
+  getTaskSource: vi.fn(),
+}));
+vi.mock("@/features/encouragements/encouragement-service", async (original) => ({
+  ...(await original<typeof import("@/features/encouragements/encouragement-service")>()),
+  deleteEncouragement: vi.fn(),
+}));
+vi.mock("@/lib/supabase/client", () => ({ getSupabaseClient: vi.fn() }));
+afterEach(() => {
+  vi.clearAllMocks();
+});
+it("ignores an older target response and only resolves the current detail", async () => {
+  let resolveFirst!: (value: ReturnType<typeof demoGetDetail>) => void;
+  const first = new Promise<ReturnType<typeof demoGetDetail>>((resolve) => {
+    resolveFirst = resolve;
+  });
+  vi.mocked(getOccurrenceDetail).mockImplementation(({ occurrenceId }) =>
+    occurrenceId === 1 ? first : Promise.resolve(demoGetDetail(2)),
+  );
+  const resolved = vi.fn();
+  const close = vi.fn();
+  const view = render(
+    <OccurrenceDetailPanel occurrenceId={1} onClose={close} onResolved={resolved} />,
+  );
+  await waitFor(() => expect(getOccurrenceDetail).toHaveBeenCalledWith({ occurrenceId: 1 }));
+  view.rerender(<OccurrenceDetailPanel occurrenceId={2} onClose={close} onResolved={resolved} />);
+  await screen.findByRole("heading", { name: "영어 단어 10개" });
+  await act(async () => resolveFirst(demoGetDetail(1)));
+  expect(screen.queryByRole("heading", { name: "물 2잔 마시기" })).not.toBeInTheDocument();
+  expect(resolved).toHaveBeenCalledTimes(1);
+  expect(resolved.mock.calls[0][0].occurrence.id).toBe(2);
+});
+it("locks completion while the request is pending and retains the prior status on failure", async () => {
+  vi.mocked(getOccurrenceDetail).mockResolvedValue(demoGetDetail(2));
+  let reject!: (error: Error) => void;
+  vi.mocked(completeOccurrence).mockImplementation(
+    () =>
+      new Promise((_, no) => {
+        reject = no;
+      }),
+  );
+  render(<OccurrenceDetailPanel occurrenceId={2} onClose={() => {}} />);
+  const button = await screen.findByRole("button", { name: "완료하기" });
+  fireEvent.click(button);
+  fireEvent.click(button);
+  expect(completeOccurrence).toHaveBeenCalledTimes(1);
+  await act(async () => reject(new Error("다시 시도해 주세요")));
+  await screen.findByRole("alert");
+  expect(screen.getByText("진행 중")).toBeInTheDocument();
+  expect(button).not.toBeDisabled();
+});
+
+it.each([null, "19:30"])(
+  "saves a title and cleared optional time through the real update service (%s)",
+  async (time) => {
+    vi.mocked(getOccurrenceDetail).mockResolvedValue(demoGetDetail(2));
+    vi.mocked(getTaskSource).mockResolvedValue({
+      title: "영어 단어 10개",
+      dueDate: "2026-01-31",
+      dueTime: time ?? "",
+      recurrence: "monthly",
+    });
+    const rpc = vi
+      .fn()
+      .mockResolvedValue({ data: { taskId: 2, updatedAt: "2026-10-12T00:00:00Z" }, error: null });
+    vi.mocked(getSupabaseClient).mockReturnValue({ rpc } as unknown as ReturnType<
+      typeof getSupabaseClient
+    >);
+    render(<OccurrenceDetailPanel occurrenceId={2} onClose={() => {}} />);
+    await screen.findByRole("heading", { name: "영어 단어 10개" });
+    fireEvent.click(screen.getByLabelText("할 일 메뉴"));
+    fireEvent.click(screen.getByRole("button", { name: "수정" }));
+    const title = await screen.findByLabelText("할 일");
+    fireEvent.change(title, { target: { value: "영어 복습" } });
+    fireEvent.change(screen.getByLabelText(/시간/), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "변경 저장" }));
+    await waitFor(() =>
+      expect(rpc).toHaveBeenCalledWith(
+        "update_task_schedule",
+        expect.objectContaining({
+          target_title: "영어 복습",
+          target_due_date: "2026-01-31",
+          target_due_time: null,
+          due_time_provided: true,
+        }),
+      ),
+    );
+  },
+);
+
+it("requires confirmation before deleting a sent encouragement with an unsent draft", async () => {
+  const detail = demoGetDetail(101);
+  const own = {
+    ...detail.encouragements[0],
+    id: 88,
+    author_id: "demo",
+    authorName: "나",
+    message: "보낸 응원",
+  };
+  detail.encouragements = [own];
+  detail.summary.myEncouragement = {
+    id: 88,
+    reaction: "heart",
+    message: "보낸 응원",
+    visibility: "visible",
+  };
+  vi.mocked(getOccurrenceDetail).mockResolvedValue(detail);
+  render(<OccurrenceDetailPanel occurrenceId={101} onClose={() => {}} />);
+  const input = await screen.findByLabelText("응원글");
+  fireEvent.change(input, { target: { value: "지우면 안 되는 작성 중 글" } });
+  fireEvent.click(screen.getByLabelText("나 응원 메뉴"));
+  fireEvent.click(screen.getByRole("button", { name: "응원 삭제" }));
+  expect(deleteEncouragement).not.toHaveBeenCalled();
+  expect(input).toHaveValue("지우면 안 되는 작성 중 글");
+  fireEvent.click(screen.getByRole("button", { name: "취소" }));
+  expect(input).toHaveValue("지우면 안 되는 작성 중 글");
+});
