@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { CompletionCursor, SocialActivityItem } from "@/types/contracts";
+import type { CompletionCursor, SocialActivityItem, ProfileAvatarKey } from "@/types/contracts";
 import {
   parseRead,
   readError,
@@ -8,6 +8,7 @@ import {
   occurrenceSchema,
   summarySchema,
   ownerSchema,
+  avatarKeySchema,
 } from "@/features/tasks/read-contract";
 import { AppError } from "@/lib/errors";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -19,24 +20,30 @@ export interface FriendSummary {
   id: string;
   connectionId?: number;
   displayName: string;
+  avatarKey: ProfileAvatarKey;
 }
 
 export interface ConnectionData {
-  incoming: Array<ConnectionRequestRow & { displayName: string }>;
-  outgoing: Array<ConnectionRequestRow & { displayName: string }>;
+  incoming: Array<ConnectionRequestRow & { displayName: string; avatarKey: ProfileAvatarKey }>;
+  outgoing: Array<ConnectionRequestRow & { displayName: string; avatarKey: ProfileAvatarKey }>;
   friends: FriendSummary[];
 }
 
 async function profilesById(
   ids: string[],
-): Promise<Map<string, { id: string; display_name: string }>> {
+): Promise<Map<string, { id: string; display_name: string; avatar_key: ProfileAvatarKey }>> {
   if (!ids.length) return new Map();
   const { data, error } = await getSupabaseClient()
     .from("profiles")
-    .select("id, display_name")
+    .select("id, display_name, avatar_key")
     .in("id", ids);
   if (error) throw new AppError("INVALID_INPUT", "친구 프로필을 불러오지 못했어요.");
-  return new Map(data.map((profile) => [profile.id, profile]));
+  return new Map(
+    data.map((profile) => [
+      profile.id,
+      { ...profile, avatar_key: parseRead(avatarKeySchema, profile.avatar_key) },
+    ]),
+  );
 }
 
 export async function getConnectionData(userId: string): Promise<ConnectionData> {
@@ -58,6 +65,9 @@ export async function getConnectionData(userId: string): Promise<ConnectionData>
   );
   const withName = (request: ConnectionRequestRow) => ({
     ...request,
+    avatarKey:
+      profiles.get(request.requester_id === userId ? request.addressee_id : request.requester_id)
+        ?.avatar_key ?? "lemon",
     displayName:
       profiles.get(request.requester_id === userId ? request.addressee_id : request.requester_id)
         ?.display_name ?? "레몬 친구",
@@ -71,6 +81,7 @@ export async function getConnectionData(userId: string): Promise<ConnectionData>
         id,
         connectionId: item.id,
         displayName: profiles.get(id)?.display_name ?? "레몬 친구",
+        avatarKey: profiles.get(id)?.avatar_key ?? "lemon",
       };
     }),
   };
@@ -80,8 +91,6 @@ function connectionError(message: string): AppError {
   if (message.includes("CONFLICT") || message.includes("ALREADY_CONNECTED")) {
     return new AppError("CONFLICT", "이미 연결 요청이 있거나 연결된 친구예요.");
   }
-  if (message.includes("BLOCKED"))
-    return new AppError("FORBIDDEN", "차단된 사용자와는 연결할 수 없어요.");
   return new AppError("INVALID_INPUT", "친구 연결을 처리하지 못했어요.");
 }
 
@@ -126,13 +135,6 @@ export async function disconnectFriend(friendId: string): Promise<{ disconnected
   if (error) throw connectionError(error.message);
   if (!data) throw new AppError("NOT_FOUND", "친구 연결을 찾지 못했어요.");
   return { disconnected: true };
-}
-
-export async function blockFriend(friendId: string): Promise<{ blocked: true }> {
-  const { data, error } = await getSupabaseClient().rpc("block_user", { target_user_id: friendId });
-  if (error) throw connectionError(error.message);
-  if (!data) throw new AppError("NOT_FOUND", "친구를 찾지 못했어요.");
-  return { blocked: true };
 }
 
 export async function getFriendOverview(friendId: string, targetOccurrenceId?: number) {

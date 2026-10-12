@@ -1,0 +1,28 @@
+-- Apply after the first twelve migrations, before 20261012140000. Dedicated local DB only.
+insert into auth.users (id, email, raw_user_meta_data) values
+ ('10000000-0000-0000-0000-000000000001', 'upgrade-owner@example.test', '{"display_name":"Upgrade owner","time_zone":"Asia/Seoul"}'),
+ ('10000000-0000-0000-0000-000000000002', 'upgrade-author@example.test', '{"display_name":"Upgrade author","time_zone":"Asia/Seoul"}'),
+ ('10000000-0000-0000-0000-000000000003', 'upgrade-pending@example.test', '{"display_name":"Upgrade pending","time_zone":"Asia/Seoul"}');
+update public.profile_private set invite_code = 'UPGRADE002' where user_id = '10000000-0000-0000-0000-000000000002';
+update public.profile_private set invite_code = 'UPGRADE003' where user_id = '10000000-0000-0000-0000-000000000003';
+insert into public.connections (user_low_id, user_high_id) values ('10000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000002');
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', false);
+select public.create_task_schedule('Upgrade hidden', current_date, null, 'none');
+select public.create_task_schedule('Upgrade deleted', current_date, null, 'none');
+select public.complete_occurrence(id) from public.task_occurrences;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', false);
+select public.upsert_encouragement(id, 'heart', 'Keep content') from public.task_occurrences;
+select public.delete_encouragement(id) from public.encouragements where occurrence_id = (select id from public.task_occurrences where title_snapshot = 'Upgrade deleted');
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', false);
+select public.hide_encouragement(id, true) from public.encouragements where visibility = 'visible';
+select public.request_connection('UPGRADE003');
+select public.block_user('10000000-0000-0000-0000-000000000003');
+select public.block_user('10000000-0000-0000-0000-000000000002');
+create schema upgrade_evidence;
+create table upgrade_evidence.before_state (name text primary key, rows jsonb);
+do $$ declare name text; begin
+  foreach name in array array['profiles','profile_private','connections','connection_requests','tasks','task_occurrences','completion_events','notifications','pets','pet_unlocks'] loop
+    execute format('insert into upgrade_evidence.before_state select %L, coalesce(jsonb_agg(to_jsonb(t) order by to_jsonb(t)::text), ''[]''::jsonb) from public.%I t', name, name);
+  end loop;
+end $$;
+create table upgrade_evidence.encouragements as select id, occurrence_id, author_id, owner_id, reaction, message, visibility, created_at from public.encouragements;

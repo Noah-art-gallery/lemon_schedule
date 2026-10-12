@@ -15,7 +15,6 @@ select extensions.is(
         'profile_private',
         'connection_requests',
         'connections',
-        'blocks',
         'tasks',
         'task_occurrences',
         'completion_events',
@@ -28,7 +27,7 @@ select extensions.is(
       )
       and relation.relrowsecurity
   ),
-  14,
+  13,
   'every exposed MVP table enables row-level security'
 );
 

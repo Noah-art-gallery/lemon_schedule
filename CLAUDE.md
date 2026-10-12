@@ -24,7 +24,7 @@
 │   ├── lib/AGENTS.md → 환경·오류·Supabase 기반
 │   └── features/
 │       ├── auth/AGENTS.md → 인증 모듈
-│       ├── connections/AGENTS.md → 친구·차단 모듈
+│       ├── connections/AGENTS.md → 친구 요청·연결 모듈
 │       ├── encouragements/AGENTS.md → 응원 모듈
 │       ├── home/AGENTS.md → 오늘 할 일 모듈
 │       ├── notifications/AGENTS.md → 앱 안 알림 모듈
@@ -37,7 +37,7 @@
 
 ## 먼저 지킬 것
 
-- 친구·비연결 사용자·차단 사용자의 데이터가 섞이지 않도록 서버 RLS와 보안 RPC를 우선 확인한다.
+- 친구와 비연결 사용자의 데이터가 섞이지 않도록 서버 RLS와 보안 RPC를 우선 확인한다.
 - 완료·포인트·완료 이벤트는 한 번만 인정되어야 하며, 클라이언트의 여러 요청으로 중복 지급하지 않는다.
 - 사용자의 이메일·펫 원본·기기 토큰은 다른 사용자에게 노출하지 않는다.
 - 데이터베이스 변경은 새 순서형 migration과 계약 검사를 함께 추가하고, 직접 테이블 쓰기를 권한 있는 RPC로 우회하지 않는다.

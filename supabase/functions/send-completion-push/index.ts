@@ -231,22 +231,13 @@ edgeRuntime.Deno.serve(async (request) => {
     }
 
     const [low, high] = [notification.actor_id, notification.recipient_id].sort();
-    const [{ data: connection, error: connectionError }, { data: blocks, error: blocksError }] =
-      await Promise.all([
-        admin
-          .from("connections")
-          .select("user_low_id")
-          .eq("user_low_id", low)
-          .eq("user_high_id", high)
-          .maybeSingle(),
-        admin
-          .from("blocks")
-          .select("blocker_id")
-          .in("blocker_id", [low, high])
-          .in("blocked_id", [low, high]),
-      ]);
-    if (connectionError || blocksError) throw new Error("CONNECTION_QUERY");
-    if ((blocks?.length ?? 0) > 0) return json({ skipped: "BLOCKED" });
+    const { data: connection, error: connectionError } = await admin
+      .from("connections")
+      .select("user_low_id")
+      .eq("user_low_id", low)
+      .eq("user_high_id", high)
+      .maybeSingle();
+    if (connectionError) throw new Error("CONNECTION_QUERY");
     if (notification.notification_type !== "connection_request" && !connection) {
       return json({ skipped: "NOT_CONNECTED" });
     }

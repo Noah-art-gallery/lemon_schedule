@@ -1,23 +1,12 @@
 .settings {
-  max-width: 720px;
-  display: grid;
-  gap: 20px;
+  width: 100%;
+  max-width: 800px;
 }
 .identity {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 8px 0 20px;
-}
-.avatar {
-  flex: 0 0 48px;
-  height: 48px;
-  display: grid;
-  place-items: center;
-  border-radius: 16px;
-  background: var(--lemon-100);
-  font-size: 22px;
-  font-weight: 700;
+  gap: 12px;
+  padding: 4px 0 24px;
 }
 .identityText {
   flex: 1;
@@ -27,24 +16,26 @@
 .identity h2 {
   margin: 0;
   font-size: 22px;
+  line-height: 1.4;
 }
 .identity p {
   margin: 4px 0 0;
   color: var(--muted);
   font-size: 14px;
 }
+.identity > button,
+.row > button {
+  flex-shrink: 0;
+}
 .group {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  overflow: hidden;
+  border-top: 1px solid var(--line);
 }
 .row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 20px;
+  gap: 12px;
+  padding: 20px 0;
 }
 .row > div {
   min-width: 0;
@@ -54,11 +45,14 @@
   align-items: center;
   gap: 8px;
   margin: 0;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
 }
+.row h2 svg {
+  flex-shrink: 0;
+}
 .row p {
-  margin: 5px 0 0;
+  margin: 6px 0 0;
   font-size: 14px;
   color: var(--muted);
   overflow-wrap: anywhere;
@@ -73,11 +67,10 @@
 .note {
   color: var(--muted);
   font-size: 14px;
-  margin: 0 0 16px;
+  margin: 0 0 20px;
 }
-.group > .note,
 .group > [role="alert"] {
-  margin: 0 20px 16px;
+  margin: 0 0 20px;
 }
 .action {
   display: flex;
@@ -86,66 +79,86 @@
   width: 100%;
   min-height: 64px;
   border: 0;
-  padding: 16px 20px;
+  padding: 16px 0;
   background: transparent;
+  color: var(--muted);
+  font: inherit;
   text-align: left;
   cursor: pointer;
 }
-.action + .action {
-  border-top: 1px solid var(--line);
-}
 .action:hover {
-  background: var(--cream);
-}
-.action span:first-of-type {
-  flex: 1;
+  color: var(--ink);
 }
 .action:disabled {
   opacity: 0.6;
   cursor: wait;
 }
-.count {
-  color: var(--muted);
-}
-.blocked {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.blocked li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--line);
-}
-.blocked li span {
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
-.empty {
-  padding: 24px 0;
-  color: var(--muted);
-}
 .discard {
   display: grid;
   gap: 16px;
 }
-@media (max-width: 480px) {
-  .row {
-    padding: 16px;
-    flex-wrap: wrap;
-  }
-  .action {
-    padding: 16px;
-  }
-  .group > .note,
-  .group > [role="alert"] {
-    margin-inline: 16px;
-  }
+
+.avatarPicker {
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  border: 0;
+}
+.avatarPicker legend {
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.avatarGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.avatarOption {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 80px;
+  min-width: 0;
+  padding: 8px 4px;
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--cream);
+  cursor: pointer;
+}
+.avatarOption:has(input:checked) {
+  background: var(--lemon-50);
+  border-color: var(--lemon-500);
+}
+.avatarOption:has(input:focus-visible) {
+  outline: 3px solid var(--leaf-600);
+  outline-offset: 2px;
+}
+.avatarOption:has(input:disabled) {
+  opacity: 0.6;
+  cursor: wait;
+}
+.avatarOption input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.avatarOption > span {
+  font-size: 13px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
 }
 
-.settingsForm[hidden] {
-  display: none;
+.avatarCheck {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  padding: 2px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: white;
 }

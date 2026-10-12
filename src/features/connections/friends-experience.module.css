@@ -1,11 +1,11 @@
 .notice {
   padding: 10px 14px;
-  background: var(--color-surface-muted, #f4f5f2);
+  background: var(--lemon-50);
   border-radius: 10px;
   margin: 0 0 16px;
 }
 .error {
-  color: var(--color-danger, #a42e2e);
+  color: var(--danger);
   padding: 12px 0;
 }
 .requestEntry {
@@ -15,46 +15,46 @@
   gap: 8px;
   min-height: 52px;
   padding: 12px 16px;
-  border: 1px solid var(--color-border, #e2e5df);
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: var(--color-surface, #fff);
+  background: var(--surface);
   margin-bottom: 20px;
   text-align: left;
 }
 .requestEntry span {
   margin-left: auto;
-  color: var(--color-text-muted, #61685e);
+  color: var(--muted);
   font-size: 14px;
 }
+.friendSection {
+  margin: 0 0 28px;
+}
 .friendPicker {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  padding: 0 0 20px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
 }
 .friendPicker button {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 48px;
-  padding: 4px 14px 4px 5px;
-  border: 1px solid var(--color-border, #e2e5df);
-  border-radius: 28px;
-  background: var(--color-surface, #fff);
-  flex-shrink: 0;
-  max-width: 100%;
+  gap: 10px;
+  min-height: 56px;
+  min-width: 0;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
 }
 .friendPicker button > span:last-child {
   overflow-wrap: anywhere;
+  min-width: 0;
 }
-.avatar {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  background: #f0f2e9;
-  border-radius: 50%;
-  flex-shrink: 0;
+.sectionTitle span {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 400;
 }
 .sectionTitle {
   font-size: 18px;
@@ -62,32 +62,33 @@
 }
 .feed {
   display: grid;
-  gap: 12px;
+  gap: 16px;
   margin-bottom: 20px;
 }
 .activity {
-  border: 1px solid var(--color-border, #e2e5df);
-  background: var(--color-surface, #fff);
+  border: 1px solid var(--line);
+  background: var(--surface);
   border-radius: 14px;
   padding: 16px;
   min-width: 0;
 }
 .activityMeta {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: baseline;
-  font-size: 14px;
-  color: var(--color-text-muted, #61685e);
+  gap: 10px;
+  align-items: center;
+  font-size: 15px;
 }
-.activityMeta span {
-  color: var(--color-text, #22291f);
-  font-weight: 600;
+.activityMeta strong {
+  min-width: 0;
   overflow-wrap: anywhere;
 }
-.activityMeta time {
-  flex-shrink: 0;
-  font-size: 12px;
+.completedAt {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
 }
 .activityOpen {
   display: flex;
@@ -101,25 +102,16 @@
   padding: 10px 0;
 }
 .activityOpen strong {
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
-.activityActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-left: -8px;
-}
-.activityActions button[aria-pressed="true"] {
-  background: #f5edba;
-}
 .empty {
-  color: var(--color-text-muted, #61685e);
+  color: var(--muted);
   padding: 32px 16px;
   text-align: center;
-  background: var(--color-surface, #fff);
-  border: 1px solid var(--color-border, #e2e5df);
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 12px;
 }
 .friendHeader {
@@ -133,7 +125,7 @@
   min-width: 0;
   overflow-wrap: anywhere;
   margin: 0;
-  font-size: 22px;
+  font-size: 20px;
 }
 .management {
   position: relative;
@@ -146,14 +138,14 @@
   display: grid;
   width: 160px;
   padding: 6px;
-  background: white;
-  border: 1px solid #e2e5df;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 8px 20px #0001;
 }
 .tabs {
   display: flex;
-  border-bottom: 1px solid var(--color-border, #e2e5df);
+  border-bottom: 1px solid var(--line);
   gap: 4px;
 }
 .tabs button {
@@ -161,23 +153,24 @@
   min-height: 48px;
   border: 0;
   border-bottom: 2px solid transparent;
+  border-radius: 0;
   background: none;
   padding: 10px;
-  color: var(--color-text-muted, #61685e);
+  color: var(--muted);
 }
 .tabs button[aria-selected="true"] {
-  border-bottom-color: #5a653d;
-  color: var(--color-text, #22291f);
+  border-bottom-color: var(--lemon-500);
+  color: var(--ink);
   font-weight: 700;
 }
 .range {
-  color: var(--color-text-muted, #61685e);
+  color: var(--muted);
   font-size: 13px;
   margin: 16px 0;
 }
 .task > time {
   display: block;
-  color: var(--color-text-muted, #61685e);
+  color: var(--muted);
   font-size: 12px;
   padding: 12px 14px 0;
 }
@@ -190,11 +183,11 @@
   font-size: 16px;
 }
 .addBody h3 span {
-  color: #777;
+  color: var(--muted);
   margin-left: 4px;
 }
 .addBody p {
-  color: var(--color-text-muted, #61685e);
+  color: var(--muted);
   font-size: 14px;
 }
 .addBody form {
@@ -218,7 +211,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px 0;
-  border-bottom: 1px solid var(--color-border, #e2e5df);
+  border-bottom: 1px solid var(--line);
 }
 .request > strong,
 .request > div:first-child {
@@ -235,7 +228,7 @@
   margin: 0;
 }
 .highlight {
-  background: #faf4cd;
+  background: var(--lemon-50);
   margin: 0 -8px;
   padding: 12px 8px;
   border-radius: 8px;
@@ -243,10 +236,6 @@
 @media (max-width: 480px) {
   .activity {
     padding: 14px;
-  }
-  .activityMeta {
-    flex-wrap: wrap;
-    gap: 4px 12px;
   }
   .request {
     flex-wrap: wrap;

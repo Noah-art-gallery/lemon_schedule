@@ -7,13 +7,11 @@
 }
 .card {
   width: min(100%, 420px);
-  padding: 32px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
+  padding: 28px;
+  background: transparent;
 }
 .heading {
-  margin: 32px 0 24px;
+  margin: 28px 0 24px;
 }
 .heading h1 {
   margin: 0;
@@ -31,7 +29,9 @@
   min-height: 44px;
   align-items: center;
   padding-inline: 4px;
-  color: var(--leaf-700);
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 4px;
   font-weight: 600;
 }
 @media (max-width: 480px) {

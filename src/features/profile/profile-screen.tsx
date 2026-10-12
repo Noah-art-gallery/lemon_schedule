@@ -1,12 +1,13 @@
 "use client";
 
-import { Ban, Bell, ChevronRight, Copy, LogOut, PencilLine } from "lucide-react";
+import { Bell, Check, Copy, LogOut, PencilLine } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeading } from "@/components/layout/page-heading";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
+import { ProfileAvatar, avatarOptions } from "@/components/ui/profile-avatar";
 import { Panel } from "@/components/ui/panel";
 import { StatePanel } from "@/components/ui/state-panel";
 import { useAuth } from "@/features/auth/auth-provider";
@@ -17,19 +18,16 @@ import {
   unregisterPushToken,
   type DevicePushStatus,
 } from "@/features/push/push-service";
-import {
-  getProfileDetails,
-  unblockUser,
-  updateProfile,
-  type ProfileDetails,
-} from "./profile-service";
+import { getProfileDetails, updateProfile, type ProfileDetails } from "./profile-service";
 import {
   demoGetProfile,
   demoUpdateProfile,
-  demoUnblockUser,
   subscribeDemoTasks,
 } from "@/features/tasks/demo-task-store";
 import styles from "./profile-screen.module.css";
+
+const normalizeAvatar = (value?: string) =>
+  avatarOptions.find((option) => option.key === value)?.key ?? "lemon";
 
 const errorText = (cause: unknown, fallback: string) =>
   cause instanceof Error ? cause.message : fallback;
@@ -39,12 +37,24 @@ export function ProfileScreen() {
   const { user, demo } = useAuth();
   const [profile, setProfile] = useState<ProfileDetails | null>(demo ? demoGetProfile() : null);
   const [loadError, setLoadError] = useState("");
-  const [panel, setPanel] = useState<"profile" | "blocked" | null>(null);
-  const [draft, setDraft] = useState({ displayName: "", timeZone: "" });
+  const [panel, setPanel] = useState<"profile" | null>(null);
+  const [draft, setDraft] = useState({
+    displayName: "",
+    timeZone: "",
+    avatarKey: normalizeAvatar(),
+  });
   const [discard, setDiscard] = useState(false);
+  const continueRef = useRef<HTMLButtonElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const wasDiscarding = useRef(false);
+  useEffect(() => {
+    if (discard) continueRef.current?.focus();
+    else if (wasDiscarding.current)
+      editorRef.current?.querySelector<HTMLElement>("input, button:not(:disabled)")?.focus();
+    wasDiscarding.current = discard;
+  }, [discard]);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
-  const blockedNote = useRef<HTMLParagraphElement>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [pushState, setPushState] = useState<DevicePushStatus | "loading" | "error">("loading");
@@ -110,7 +120,11 @@ export function ProfileScreen() {
 
   function openProfile() {
     if (!profile) return;
-    setDraft({ displayName: profile.displayName, timeZone: profile.timeZone });
+    setDraft({
+      displayName: profile.displayName,
+      timeZone: profile.timeZone,
+      avatarKey: normalizeAvatar(profile.avatarKey),
+    });
     setError("");
     setDiscard(false);
     setPanel("profile");
@@ -120,7 +134,9 @@ export function ProfileScreen() {
     if (
       panel === "profile" &&
       profile &&
-      (draft.displayName !== profile.displayName || draft.timeZone !== profile.timeZone)
+      (draft.displayName !== profile.displayName ||
+        draft.timeZone !== profile.timeZone ||
+        draft.avatarKey !== normalizeAvatar(profile.avatarKey))
     ) {
       setDiscard(true);
       return false;
@@ -143,7 +159,14 @@ export function ProfileScreen() {
     try {
       const next = demo ? demoUpdateProfile(draft) : await updateProfile(draft);
       setProfile((current) =>
-        current ? { ...current, displayName: next.displayName, timeZone: next.timeZone } : current,
+        current
+          ? {
+              ...current,
+              displayName: next.displayName,
+              timeZone: next.timeZone,
+              avatarKey: normalizeAvatar(next.avatarKey),
+            }
+          : current,
       );
       setPanel(null);
       setMessage(demo ? "미리보기에 반영했어요" : "프로필을 저장했어요");
@@ -200,28 +223,6 @@ export function ProfileScreen() {
       setPushBusy(false);
     }
   }
-  async function unblock(id: string) {
-    if (busyRef.current) return;
-    busyRef.current = true;
-    setBusy(true);
-    setError("");
-    try {
-      if (demo) demoUnblockUser(id);
-      else await unblockUser(id);
-      setProfile((current) =>
-        current
-          ? { ...current, blocked: current.blocked.filter((item) => item.id !== id) }
-          : current,
-      );
-      blockedNote.current?.focus();
-      setMessage("차단을 해제했어요");
-    } catch (cause) {
-      setError(errorText(cause, "차단을 해제하지 못했어요"));
-    } finally {
-      busyRef.current = false;
-      setBusy(false);
-    }
-  }
   const statusText = {
     unsupported: "휴대폰 앱에서 설정할 수 있어요",
     off: "꺼짐",
@@ -258,14 +259,12 @@ export function ProfileScreen() {
       ) : (
         <div className={styles.settings}>
           <section className={styles.identity} aria-label="프로필">
-            <span className={styles.avatar} aria-hidden="true">
-              {profile.displayName.slice(0, 1)}
-            </span>
+            <ProfileAvatar avatarKey={profile.avatarKey} />
             <div className={styles.identityText}>
               <h2>{profile.displayName}</h2>
               <p>{profile.timeZone}</p>
             </div>
-            <Button variant="secondary" aria-label="프로필 수정" onClick={openProfile}>
+            <Button variant="ghost" aria-label="프로필 수정" onClick={openProfile}>
               <PencilLine size={17} aria-hidden="true" />
               수정
             </Button>
@@ -276,7 +275,7 @@ export function ProfileScreen() {
                 <h2 id="invite-heading">내 초대 코드</h2>
                 <p className={styles.code}>{profile.inviteCode}</p>
               </div>
-              <Button variant="secondary" onClick={() => void copyInvite()}>
+              <Button variant="ghost" onClick={() => void copyInvite()}>
                 <Copy size={17} aria-hidden="true" />
                 복사
               </Button>
@@ -293,7 +292,7 @@ export function ProfileScreen() {
               </div>
               {(pushState === "on" || pushState === "off") && !demo ? (
                 <Button
-                  variant="secondary"
+                  variant="ghost"
                   loading={pushBusy}
                   disabled={busy}
                   onClick={() => void changePush()}
@@ -303,7 +302,7 @@ export function ProfileScreen() {
               ) : null}
               {pushState === "error" || pushState === "denied" ? (
                 <Button
-                  variant="secondary"
+                  variant="ghost"
                   aria-label="알림 상태 다시 확인"
                   onClick={() => void checkPush()}
                 >
@@ -324,19 +323,6 @@ export function ProfileScreen() {
             <button
               className={styles.action}
               type="button"
-              onClick={() => {
-                setError("");
-                setPanel("blocked");
-              }}
-            >
-              <Ban size={18} aria-hidden="true" />
-              <span>차단한 사용자</span>
-              <span className={styles.count}>{profile.blocked.length}</span>
-              <ChevronRight size={18} aria-hidden="true" />
-            </button>
-            <button
-              className={styles.action}
-              type="button"
               disabled={busy || pushBusy}
               onClick={() => void logout()}
             >
@@ -348,7 +334,7 @@ export function ProfileScreen() {
       )}
       <Panel
         open={panel !== null}
-        title={panel === "blocked" ? "차단한 사용자" : "프로필 수정"}
+        title="프로필 수정"
         onClose={() => {
           setPanel(null);
           setError("");
@@ -366,7 +352,7 @@ export function ProfileScreen() {
               <div className={styles.discard}>
                 <p>변경한 내용을 버릴까요?</p>
                 <div className="button-row">
-                  <Button variant="secondary" onClick={() => setDiscard(false)}>
+                  <Button ref={continueRef} variant="secondary" onClick={() => setDiscard(false)}>
                     계속 수정
                   </Button>
                   <Button
@@ -382,59 +368,57 @@ export function ProfileScreen() {
                 </div>
               </div>
             ) : null}
-            <form className={`form-stack ${styles.settingsForm}`} onSubmit={save} hidden={discard}>
-              <Field
-                label="닉네임"
-                name="displayName"
-                value={draft.displayName}
-                onChange={(event) => setDraft({ ...draft, displayName: event.target.value })}
-                maxLength={40}
-                required
-                disabled={busy}
-              />
-              <Field
-                label="시간대"
-                name="timeZone"
-                value={draft.timeZone}
-                onChange={(event) => setDraft({ ...draft, timeZone: event.target.value })}
-                required
-                disabled={busy}
-              />
-              <div className="button-row">
-                <Button type="button" variant="secondary" disabled={busy} onClick={close}>
-                  취소
-                </Button>
-                <Button type="submit" loading={busy}>
-                  저장
-                </Button>
-              </div>
-            </form>
-          </>
-        ) : null}
-        {panel === "blocked" ? (
-          <>
-            <p ref={blockedNote} tabIndex={-1} className={styles.note}>
-              차단을 해제해도 친구로 다시 연결되지 않아요
-            </p>
-            {profile?.blocked.length ? (
-              <ul className={styles.blocked}>
-                {profile.blocked.map((item) => (
-                  <li key={item.id}>
-                    <span>{item.displayName}</span>
-                    <Button
-                      variant="secondary"
-                      disabled={busy}
-                      aria-label={`${item.displayName} 차단 해제`}
-                      onClick={() => void unblock(item.id)}
-                    >
-                      차단 해제
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className={styles.empty}>차단한 사용자가 없어요</p>
-            )}
+            <div ref={editorRef} hidden={discard}>
+              <form className="form-stack" onSubmit={save}>
+                <Field
+                  label="닉네임"
+                  name="displayName"
+                  value={draft.displayName}
+                  onChange={(event) => setDraft({ ...draft, displayName: event.target.value })}
+                  maxLength={40}
+                  required
+                  disabled={busy}
+                />
+                <fieldset className={styles.avatarPicker} disabled={busy}>
+                  <legend>프로필 이미지</legend>
+                  <div className={styles.avatarGrid}>
+                    {avatarOptions.map((option) => (
+                      <label key={option.key} className={styles.avatarOption}>
+                        <input
+                          type="radio"
+                          name="avatarKey"
+                          value={option.key}
+                          aria-label={option.label}
+                          checked={draft.avatarKey === option.key}
+                          onChange={() => setDraft({ ...draft, avatarKey: option.key })}
+                        />
+                        <ProfileAvatar avatarKey={option.key} size={36} />
+                        {draft.avatarKey === option.key ? (
+                          <Check className={styles.avatarCheck} size={18} aria-hidden="true" />
+                        ) : null}
+                        <span>{option.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                <Field
+                  label="시간대"
+                  name="timeZone"
+                  value={draft.timeZone}
+                  onChange={(event) => setDraft({ ...draft, timeZone: event.target.value })}
+                  required
+                  disabled={busy}
+                />
+                <div className="button-row">
+                  <Button type="button" variant="secondary" disabled={busy} onClick={close}>
+                    취소
+                  </Button>
+                  <Button type="submit" loading={busy}>
+                    저장
+                  </Button>
+                </div>
+              </form>
+            </div>
           </>
         ) : null}
       </Panel>

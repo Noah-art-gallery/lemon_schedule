@@ -1,5 +1,10 @@
-import { reactionValues, type InboxFilter, type InboxItem } from "@/types/contracts";
-import { parseRead, readError, positiveId } from "@/features/tasks/read-contract";
+import {
+  reactionValues,
+  type InboxFilter,
+  type InboxItem,
+  type ProfileAvatarKey,
+} from "@/types/contracts";
+import { parseRead, readError, positiveId, avatarKeySchema } from "@/features/tasks/read-contract";
 import { AppError } from "@/lib/errors";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { NotificationRow } from "@/lib/supabase/database.types";
@@ -7,6 +12,7 @@ import { z } from "zod";
 
 export interface NotificationItem extends NotificationRow {
   actorName: string;
+  actorAvatarKey: ProfileAvatarKey;
 }
 
 export interface NotificationPage {
@@ -75,14 +81,18 @@ export async function listNotifications(input: {
     ...new Set(rows.map((item) => item.actor_id).filter((id): id is string => Boolean(id))),
   ];
   const profiles = actorIds.length
-    ? await client.from("profiles").select("id, display_name").in("id", actorIds)
+    ? await client.from("profiles").select("id, display_name, avatar_key").in("id", actorIds)
     : { data: [], error: null };
   if (profiles.error) throw new AppError("INVALID_INPUT", "알림 보낸 사람을 불러오지 못했어요.");
-  const names = new Map(profiles.data.map((profile) => [profile.id, profile.display_name]));
+  const names = new Map(profiles.data.map((profile) => [profile.id, profile]));
   return {
     items: rows.map((item) => ({
       ...item,
-      actorName: item.actor_id ? (names.get(item.actor_id) ?? "친구") : "레몬스케줄",
+      actorName: item.actor_id ? (names.get(item.actor_id)?.display_name ?? "친구") : "레몬스케줄",
+      actorAvatarKey: parseRead(
+        avatarKeySchema,
+        item.actor_id ? names.get(item.actor_id)?.avatar_key : undefined,
+      ),
     })),
     nextCursor,
   };
@@ -146,6 +156,7 @@ export async function listInbox(input: {
           id: positiveId,
           type: z.enum(["encouragement_received", "connection_request", "connection_accepted"]),
           actorName: z.string(),
+          actorAvatarKey: avatarKeySchema,
           createdAt: z.string(),
           readAt: z.string().nullable(),
           occurrenceId: positiveId.nullable(),

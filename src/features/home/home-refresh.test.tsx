@@ -2,7 +2,12 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, expect, it, vi } from "vitest";
 import { HomeScreen } from "./home-screen";
 import { demoGetDetail } from "@/features/tasks/demo-task-store";
-import { listOccurrenceWindow, listOwnHistory } from "@/features/tasks/task-service";
+import {
+  completeOccurrence,
+  reopenOccurrence,
+  listOccurrenceWindow,
+  listOwnHistory,
+} from "@/features/tasks/task-service";
 import { AppError } from "@/lib/errors";
 const auth = vi.hoisted(() => ({ user: { id: "owner" } }));
 vi.mock("@/features/auth/auth-provider", () => ({
@@ -15,6 +20,8 @@ vi.mock("@/features/tasks/task-service", async (original) => ({
   ...(await original<typeof import("@/features/tasks/task-service")>()),
   listOccurrenceWindow: vi.fn(),
   listOwnHistory: vi.fn(),
+  completeOccurrence: vi.fn(),
+  reopenOccurrence: vi.fn(),
 }));
 vi.mock("@/features/encouragements/encouragement-service", () => ({
   listEncouragementSummaries: vi.fn().mockResolvedValue({ items: [] }),
@@ -275,3 +282,57 @@ it.each(["failure", "removed"])(
     expect(screen.queryByRole("button", { name: "이전 기록 더 보기" })).not.toBeInTheDocument();
   },
 );
+
+it("keeps an overdue row and its completion control in place through completion and undo", async () => {
+  const data = initial();
+  data.occurrences[0].occurrence_date = "2020-01-01";
+  vi.mocked(listOccurrenceWindow).mockResolvedValue(data);
+  vi.mocked(completeOccurrence).mockResolvedValue({
+    status: "completed",
+    completedAt: "2026-10-12T12:00:00Z",
+    firstCompletion: true,
+    rewardGranted: true,
+    rewardPoints: 1,
+    completionEventId: 1,
+  } as Awaited<ReturnType<typeof completeOccurrence>>);
+  vi.mocked(reopenOccurrence).mockResolvedValue(undefined as never);
+  render(<HomeScreen />);
+  const title = await screen.findByRole("button", { name: "영어 단어 10개" });
+  const button = screen.getByRole("button", { name: "영어 단어 10개 완료" });
+  button.focus();
+  fireEvent.click(button);
+  await waitFor(() => expect(button).toHaveTextContent("완료됨"));
+  expect(title).toBeInTheDocument();
+  expect(button).toHaveFocus();
+  expect(listOccurrenceWindow).toHaveBeenCalledTimes(1);
+  fireEvent.click(button);
+  await waitFor(() => expect(button).toHaveAttribute("aria-pressed", "false"));
+  expect(reopenOccurrence).toHaveBeenCalledWith(2);
+  expect(title).toBeInTheDocument();
+});
+it("locks a row request, gives no early reward, and preserves that row on failure", async () => {
+  let reject!: (error: Error) => void;
+  vi.mocked(completeOccurrence).mockImplementation(
+    () =>
+      new Promise((_, no) => {
+        reject = no;
+      }),
+  );
+  render(<HomeScreen />);
+  const title = await screen.findByRole("button", { name: "영어 단어 10개" });
+  const button = screen.getByRole("button", { name: "영어 단어 10개 완료" });
+  button.focus();
+  fireEvent.click(button);
+  fireEvent.click(button);
+  expect(button).not.toBeDisabled();
+  expect(button).toHaveAttribute("aria-disabled", "true");
+  expect(button).toHaveAttribute("aria-busy", "true");
+  expect(button).toHaveFocus();
+  expect(completeOccurrence).toHaveBeenCalledTimes(1);
+  expect(screen.queryByText(/펫이 1포인트/)).not.toBeInTheDocument();
+  await act(async () => reject(new Error("완료 저장 실패")));
+  expect(screen.getByRole("alert")).toHaveTextContent("완료 저장 실패");
+  expect(title).toBeVisible();
+  expect(button).toHaveAttribute("aria-pressed", "false");
+  expect(button).not.toBeDisabled();
+});

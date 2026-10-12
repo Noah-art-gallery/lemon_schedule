@@ -4,6 +4,7 @@ import { Eraser, Pencil, Save } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import styles from "./pet-canvas.module.css";
 
 interface PetCanvasProps {
   onSave: (blob: Blob) => Promise<void>;
@@ -111,7 +112,7 @@ export function PetCanvas({ onSave, strokeColor, onDirtyChange }: PetCanvasProps
   }
 
   return (
-    <div className="pet-drawing">
+    <div className={styles.editor}>
       {error ? (
         <p role="alert" className="form-error">
           {error}
@@ -119,7 +120,7 @@ export function PetCanvas({ onSave, strokeColor, onDirtyChange }: PetCanvasProps
       ) : null}
       <canvas
         ref={canvasRef}
-        className="pet-drawing__canvas"
+        className={styles.canvas}
         aria-label="나만의 레몬 펫을 그리는 도화지"
         onPointerDown={start}
         onPointerMove={move}
@@ -127,8 +128,8 @@ export function PetCanvas({ onSave, strokeColor, onDirtyChange }: PetCanvasProps
         onPointerCancel={stop}
         onPointerLeave={stop}
       />
-      <div className="pet-drawing__toolbar">
-        <div className="pet-drawing__tool-group" role="group" aria-label="그리기 도구">
+      <div className={styles.toolbar}>
+        <div className={styles.toolGroup} role="group" aria-label="그리기 도구">
           <Button
             size="sm"
             variant={tool === "brush" ? "secondary" : "ghost"}
@@ -148,7 +149,7 @@ export function PetCanvas({ onSave, strokeColor, onDirtyChange }: PetCanvasProps
             <Eraser size={16} aria-hidden="true" /> 지우개
           </Button>
         </div>
-        <div className="pet-drawing__opacity" role="group" aria-label="선 농도">
+        <div className={styles.opacity} role="group" aria-label="선 농도">
           <span>농도</span>
           {[0.4, 0.7, 1].map((value) => (
             <Button
@@ -164,11 +165,11 @@ export function PetCanvas({ onSave, strokeColor, onDirtyChange }: PetCanvasProps
           ))}
         </div>
       </div>
-      <div className="pet-drawing__actions">
+      <div className={styles.actions}>
         <Button size="sm" variant="ghost" onClick={clear} disabled={saving}>
           <Eraser size={16} aria-hidden="true" /> 전체 지우기
         </Button>
-        <Button size="sm" onClick={() => void save()} disabled={saving}>
+        <Button size="lg" onClick={() => void save()} disabled={saving}>
           <Save size={16} aria-hidden="true" /> {saving ? "저장 중…" : "펫 저장"}
         </Button>
       </div>

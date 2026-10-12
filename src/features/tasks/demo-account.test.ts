@@ -34,14 +34,29 @@ it("shares first-completion points, profile changes and pet state across screens
     decorations: { selectedColor: "lemon-yellow" },
   });
 });
-it("shows blocks in the shared profile and unblocking does not reconnect", async () => {
+it("disconnects without retaining a block list or restoring the connection", async () => {
   const store = await import("./demo-task-store");
-  store.demoDisconnectFriend("demo-friend-1", true);
-  expect(store.demoGetProfile().blocked).toEqual([{ id: "demo-friend-1", displayName: "지민" }]);
-  store.demoUnblockUser("demo-friend-1");
-  expect(store.demoGetProfile().blocked).toEqual([]);
+  store.demoDisconnectFriend("demo-friend-1");
   expect(store.demoGetConnections().friends.some((friend) => friend.id === "demo-friend-1")).toBe(
     false,
   );
+  expect(store.demoGetProfile()).not.toHaveProperty("blocked");
   expect(() => store.demoGetDetail(101)).toThrow();
+});
+it("shares the selected profile avatar with own details and encouragement author projections", async () => {
+  const store = await import("./demo-task-store");
+  expect(store.demoGetProfile().avatarKey).toBe("lemon");
+  store.demoUpdateProfile({ avatarKey: "penguin" });
+  expect(store.demoGetProfile().avatarKey).toBe("penguin");
+  expect(store.demoGetDetail(1).owner.avatarKey).toBe("penguin");
+  store.demoSendEncouragement(101, "clap", "함께 해요");
+  expect(store.demoGetDetail(101).summary.latestMessage?.authorAvatarKey).toBe("penguin");
+  store.demoUpdateProfile({ avatarKey: "flower" });
+  expect(
+    store.demoGetDetail(101).encouragements.find((item) => item.author_id === "demo")
+      ?.authorAvatarKey,
+  ).toBe("flower");
+  expect(store.demoListSocial()[0].owner.avatarKey).toBeDefined();
+  store.demoDisconnectFriend("demo-friend-1");
+  expect(store.demoGetDetail(1).encouragements[0].authorAvatarKey).toBe("lemon");
 });

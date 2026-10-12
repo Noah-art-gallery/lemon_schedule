@@ -55,7 +55,6 @@ beforeEach(() => {
       },
     ],
     connections: [{ user_low_id: "friend", user_high_id: "owner" }],
-    blocks: [],
     task_occurrences: [{ id: 2, task_id: 5, owner_id: "owner", status: "completed" }],
     tasks: [{ id: 5, deleted_at: null }],
     encouragements: [
@@ -170,13 +169,15 @@ it("skips reopened and deleted tasks", async () => {
   expect(await result()).toEqual({ skipped: "TASK_DELETED" });
   noDevicesRead();
 });
-it("skips revoked relationships and blocks before token access", async () => {
+it("skips revoked relationships before token access", async () => {
   rows.connections = [];
   expect(await result()).toEqual({ skipped: "NOT_CONNECTED" });
   noDevicesRead();
-  rows.blocks = [{ blocker_id: "owner", blocked_id: "friend" }];
-  expect(await result()).toEqual({ skipped: "BLOCKED" });
-  noDevicesRead();
+});
+it("delivers direct notifications without the retired blocks table", async () => {
+  queryError = "blocks";
+  expect(await result()).toEqual({ sent: 0, failed: 0, skipped: 0 });
+  expect(from).not.toHaveBeenCalledWith("blocks");
 });
 it("sends pending incoming requests without requiring a connection", async () => {
   rows.notifications[0].notification_type = "connection_request";
@@ -189,7 +190,7 @@ it.each(["accepted", "rejected", "cancelled"])("skips %s requests", async (statu
   expect(await result()).toEqual({ skipped: "REQUEST_UNAVAILABLE" });
   noDevicesRead();
 });
-it("checks request parties and blocks", async () => {
+it("checks request parties", async () => {
   rows.notifications[0].notification_type = "connection_request";
   rows.connection_requests[0].addressee_id = "other";
   expect(await result()).toEqual({ skipped: "REQUEST_UNAVAILABLE" });

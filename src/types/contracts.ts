@@ -1,3 +1,15 @@
+export const profileAvatarKeys = [
+  "lemon",
+  "cat",
+  "dog",
+  "rabbit",
+  "bear",
+  "fox",
+  "penguin",
+  "flower",
+] as const;
+export type ProfileAvatarKey = (typeof profileAvatarKeys)[number];
+
 export const recurrenceValues = ["none", "daily", "weekly", "monthly"] as const;
 export type Recurrence = (typeof recurrenceValues)[number];
 
@@ -15,11 +27,7 @@ export type ConnectionRequestStatus = (typeof connectionRequestStatusValues)[num
 export const reactionValues = ["lemon", "clap", "heart", "cheer"] as const;
 export type Reaction = (typeof reactionValues)[number];
 
-export const encouragementVisibilityValues = [
-  "visible",
-  "hidden_by_owner",
-  "deleted_by_author",
-] as const;
+export const encouragementVisibilityValues = ["visible", "deleted_by_author"] as const;
 export type EncouragementVisibility = (typeof encouragementVisibilityValues)[number];
 
 export const notificationTypeValues = [
@@ -61,6 +69,7 @@ export interface EncouragementSummary {
   latestMessage: {
     encouragementId: number;
     authorName: string;
+    authorAvatarKey: ProfileAvatarKey;
     message: string;
     createdAt: string;
   } | null;
@@ -73,7 +82,7 @@ export interface EncouragementSummary {
 }
 export interface SocialActivityItem {
   occurrence: import("@/lib/supabase/database.types").TaskOccurrenceRow;
-  owner: { id: string; displayName: string };
+  owner: { id: string; displayName: string; avatarKey: ProfileAvatarKey };
   summary: EncouragementSummary;
 }
 export interface OwnHistoryItem {
@@ -83,7 +92,7 @@ export interface OwnHistoryItem {
 }
 export interface OccurrenceDetail {
   occurrence: import("@/lib/supabase/database.types").TaskOccurrenceRow;
-  owner: { id: string; displayName: string };
+  owner: { id: string; displayName: string; avatarKey: ProfileAvatarKey };
   taskDeleted: boolean;
   permissions: { canEdit: boolean; canComplete: boolean; canEncourage: boolean };
   encouragements: import("@/features/encouragements/encouragement-service").EncouragementDisplay[];
@@ -94,6 +103,7 @@ export interface InboxItem {
   id: number;
   type: Exclude<NotificationType, "task_completed">;
   actorName: string;
+  actorAvatarKey: ProfileAvatarKey;
   createdAt: string;
   readAt: string | null;
   occurrenceId: number | null;

@@ -1,5 +1,6 @@
 "use client";
-import { Citrus, UserRoundPlus, ArrowUpRight } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
+import { ProfileAvatar } from "@/components/ui/profile-avatar";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/layout/app-shell";
@@ -8,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { StatePanel } from "@/components/ui/state-panel";
 import { useAuth } from "@/features/auth/auth-provider";
 import { OccurrenceDetailPanel } from "@/features/tasks/occurrence-detail-panel";
-import { reactionLabels } from "@/features/encouragements/encouragement-composer";
+import { ReactionImage } from "@/features/encouragements/reaction-image";
 import type { InboxFilter, InboxItem, OccurrenceDetail } from "@/types/contracts";
 import { listInbox, markAllInboxRead } from "./notification-service";
 import { demoListInbox, demoMarkAllInboxRead } from "./demo-inbox-store";
@@ -288,11 +289,7 @@ function NotificationContent() {
               onClick={() => open(item)}
             >
               <span className={styles.icon} aria-hidden="true">
-                {item.type === "encouragement_received" ? (
-                  <Citrus size={20} />
-                ) : (
-                  <UserRoundPlus size={20} />
-                )}
+                <ProfileAvatar avatarKey={item.actorAvatarKey} size={32} />
               </span>
               <span className={styles.body}>
                 <span className={styles.label}>
@@ -312,10 +309,9 @@ function NotificationContent() {
                     {item.taskTitle ? (
                       <strong className={styles.title}>{item.taskTitle}</strong>
                     ) : null}
+                    {item.reaction ? <ReactionImage reaction={item.reaction} /> : null}
                     {item.messagePreview ? (
                       <span className={styles.preview}>{item.messagePreview}</span>
-                    ) : item.reaction ? (
-                      <span className={styles.preview}>{reactionLabels[item.reaction]}</span>
                     ) : null}
                     {item.type === "connection_request" ? (
                       <span className={styles.preview}>요청 확인하기</span>

@@ -1,29 +1,13 @@
 "use client";
-import { Check, MessageCircle } from "lucide-react";
+import { Check, Circle } from "lucide-react";
 import type { TaskOccurrenceRow } from "@/lib/supabase/database.types";
 import type { EncouragementSummary } from "@/types/contracts";
-import { reactionLabels } from "@/features/encouragements/encouragement-composer";
+import {
+  EncouragementThread,
+  type EncouragementThreadProps,
+} from "@/features/encouragements/encouragement-thread";
 import styles from "./task-experience.module.css";
-export function EncouragementSummaryView({ summary }: { summary: EncouragementSummary }) {
-  if (!summary.count) return null;
-  return (
-    <span className={styles.summary}>
-      <MessageCircle size={15} aria-hidden="true" />
-      <span className={styles.summaryText}>
-        응원 {summary.count}
-        {summary.latestMessage
-          ? ` · ${summary.latestMessage.authorName}: ${summary.latestMessage.message}`
-          : ` · ${Object.entries(summary.reactions)
-              .filter(([, count]) => count)
-              .map(
-                ([reaction, count]) =>
-                  `${reactionLabels[reaction as keyof typeof reactionLabels]} ${count}`,
-              )
-              .join(" · ")}`}
-      </span>
-    </span>
-  );
-}
+export { EncouragementSummaryView } from "@/features/encouragements/encouragement-thread";
 export function TaskRowView({
   occurrence,
   summary,
@@ -31,6 +15,7 @@ export function TaskRowView({
   pending = false,
   onOpen,
   onToggle,
+  encouragementProps,
 }: {
   occurrence: TaskOccurrenceRow;
   summary?: EncouragementSummary;
@@ -38,24 +23,10 @@ export function TaskRowView({
   pending?: boolean;
   onOpen: () => void;
   onToggle?: () => void;
+  encouragementProps?: Omit<EncouragementThreadProps, "occurrenceId" | "summary">;
 }) {
   return (
     <div className={styles.row}>
-      {onToggle && !taskDeleted ? (
-        <button
-          className={styles.toggle}
-          aria-label={`${occurrence.title_snapshot} ${occurrence.status === "completed" ? "완료 취소" : "완료"}`}
-          aria-pressed={occurrence.status === "completed"}
-          disabled={pending}
-          onClick={onToggle}
-        >
-          <span
-            className={`${styles.check} ${occurrence.status === "completed" ? styles.checked : ""}`}
-          >
-            {occurrence.status === "completed" ? <Check size={16} /> : null}
-          </span>
-        </button>
-      ) : null}
       <div className={styles.rowBody}>
         <button className={styles.rowOpen} data-occurrence-trigger={occurrence.id} onClick={onOpen}>
           <span className={styles.taskTitle}>{occurrence.title_snapshot}</span>
@@ -68,12 +39,45 @@ export function TaskRowView({
             ) : null}
             {taskDeleted ? <span>삭제된 할 일 · 기록만 보기</span> : null}
             {!onToggle ? (
-              <span>{occurrence.status === "completed" ? "완료" : "다시 진행 중"}</span>
+              <span>
+                {occurrence.status === "completed"
+                  ? "완료"
+                  : occurrence.first_completed_at
+                    ? "다시 진행 중"
+                    : "진행 중"}
+              </span>
             ) : null}
           </span>
-          {summary ? <EncouragementSummaryView summary={summary} /> : null}
         </button>
       </div>
+      {onToggle && !taskDeleted ? (
+        <button
+          className={styles.toggle}
+          aria-label={`${occurrence.title_snapshot} ${occurrence.status === "completed" ? "완료 취소" : "완료"}`}
+          aria-pressed={occurrence.status === "completed"}
+          aria-disabled={pending}
+          aria-busy={pending}
+          onClick={() => {
+            if (!pending) onToggle();
+          }}
+        >
+          {occurrence.status === "completed" ? (
+            <Check size={19} aria-hidden="true" />
+          ) : (
+            <Circle size={19} aria-hidden="true" />
+          )}
+          <span>{occurrence.status === "completed" ? "완료됨" : "완료"}</span>
+        </button>
+      ) : null}
+      {summary && (summary.count > 0 || encouragementProps?.canCompose) ? (
+        <div className={styles.rowThread}>
+          <EncouragementThread
+            {...encouragementProps}
+            occurrenceId={occurrence.id}
+            summary={summary}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(150);
+select extensions.plan(149);
 
 select extensions.throws_ok(
   $$insert into auth.users (
@@ -476,26 +476,12 @@ select extensions.is(
 select set_config('test.encouragement_id', (select id::text from public.encouragements), true);
 
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
-select extensions.lives_ok(
-  $$select public.hide_encouragement((select id from public.encouragements limit 1), true)$$,
-  'owner can hide an encouragement'
-);
-select extensions.is(
-  (select count(*)::integer from public.encouragements where visibility = 'hidden_by_owner'),
-  1,
-  'owner keeps hidden encouragement in history'
-);
+select extensions.is(to_regprocedure('public.hide_encouragement(bigint,boolean)'), null::regprocedure, 'owner hiding RPC no longer exists');
+select extensions.is(public.delete_encouragement(current_setting('test.encouragement_id')::bigint), false, 'owner cannot delete another author encouragement');
+select extensions.is((select count(*)::integer from public.encouragements where visibility = 'visible'), 1, 'owner retains the received encouragement');
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
-select extensions.is(
-  (select count(*)::integer from public.encouragements where visibility = 'hidden_by_owner'),
-  1,
-  'author can still see own hidden encouragement while connected and complete'
-);
+select extensions.is((select count(*)::integer from public.encouragements where visibility = 'visible'), 1, 'connected author can read the visible encouragement');
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
-select extensions.lives_ok(
-  $$select public.hide_encouragement((select id from public.encouragements limit 1), false)$$,
-  'owner can restore a non-deleted encouragement'
-);
 
 select extensions.lives_ok(
   $$select public.reopen_occurrence((select id from public.task_occurrences limit 1))$$,
@@ -596,96 +582,69 @@ select extensions.is(
 
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
 select extensions.lives_ok(
-  $$select public.block_user('00000000-0000-0000-0000-000000000002')$$,
-  'owner can block an actively connected friend'
+  $$select public.disconnect_friend('00000000-0000-0000-0000-000000000002')$$,
+  'owner can remove an actively connected friend'
 );
-select extensions.is(
-  (select count(*)::integer from public.list_blocked_profiles()),
-  1,
-  'blocker can list the blocked public nickname'
-);
-select extensions.is(
-  (select display_name from public.list_blocked_profiles() limit 1),
-  'Friend',
-  'blocked list exposes only the public nickname'
-);
+select extensions.is(to_regclass('public.blocks'), null::regclass, 'block storage no longer exists');
+select extensions.is(to_regprocedure('public.list_blocked_profiles()'), null::regprocedure, 'block list RPC no longer exists');
 select extensions.is(
   (select count(*)::integer from public.connections),
   0,
-  'blocking immediately removes the active connection'
+  'disconnecting immediately removes the active connection'
 );
 
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
 select extensions.is(
   (select count(*)::integer from public.tasks where title = 'Owner task'),
   0,
-  'blocked former friend immediately loses task access'
+  'disconnected former friend immediately loses task access'
 );
 select extensions.is(
   (select count(*)::integer from public.profile_private where user_id = '00000000-0000-0000-0000-000000000001'),
   0,
-  'blocked user cannot read blocker private profile data'
+  'disconnected user cannot read other private profile data'
 );
 select extensions.is(
   (select count(*)::integer from public.pets where user_id = '00000000-0000-0000-0000-000000000001'),
   0,
-  'blocked user cannot read blocker pet data'
+  'disconnected user cannot read other pet data'
 );
 select extensions.is(
   (select count(*)::integer from public.pet_unlocks where user_id = '00000000-0000-0000-0000-000000000001'),
   0,
-  'blocked user cannot read blocker pet unlocks'
+  'disconnected user cannot read other pet unlocks'
 );
 select extensions.is(
   (select count(*)::integer from public.device_tokens where user_id = '00000000-0000-0000-0000-000000000001'),
   0,
-  'blocked user cannot read blocker device tokens'
+  'disconnected user cannot read other device tokens'
 );
 select extensions.throws_ok(
-  $$update public.tasks set title = 'Blocked edit' where owner_id = '00000000-0000-0000-0000-000000000001'$$,
+  $$update public.tasks set title = 'Disconnected edit' where owner_id = '00000000-0000-0000-0000-000000000001'$$,
   '42501',
   'permission denied for table tasks',
-  'blocked task mutation is safely filtered by RLS'
+  'disconnected task mutation is safely filtered by RLS'
 );
 select extensions.throws_ok(
   $$select public.upsert_encouragement((select id from public.task_occurrences limit 1), 'heart', '보이면 안 돼')$$,
   'P0001',
   'ENCOURAGEMENT_NOT_ALLOWED',
-  'blocked user cannot write an encouragement'
+  'disconnected user cannot write an encouragement'
 );
-select extensions.throws_ok(
-  $$select public.request_connection('LEMONA0001')$$,
-  'P0001',
-  'CONNECTION_BLOCKED',
-  'block prevents a new request from the blocked user'
-);
-
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
 select extensions.is(
   (select count(*)::integer from public.tasks where title = 'Owner task'),
   1,
-  'blocked user did not mutate the owner task'
+  'disconnected user did not mutate the owner task'
 );
-select extensions.throws_ok(
-  $$select public.request_connection('LEMONB0001')$$,
-  'P0001',
-  'CONNECTION_BLOCKED',
-  'block prevents a new request from the blocker'
-);
-select extensions.lives_ok(
-  $$select public.unblock_user('00000000-0000-0000-0000-000000000002')$$,
-  'blocker can unblock the user'
-);
-select extensions.is(
-  (select count(*)::integer from public.connections),
-  0,
-  'unblock does not restore the old connection'
-);
+select extensions.is(to_regprocedure('public.block_user(uuid)'), null::regprocedure, 'block RPC no longer exists');
+select extensions.is(to_regprocedure('public.unblock_user(uuid)'), null::regprocedure, 'unblock RPC no longer exists');
+select extensions.is((select count(*)::integer from public.connections), 0, 'removed connection is not automatically restored');
 
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
 select extensions.lives_ok(
   $$select public.request_connection('LEMONA0001')$$,
-  'unblocked user can request a new connection'
+  'undisconnected user can request a new connection'
 );
 
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
@@ -765,12 +724,11 @@ select extensions.is(jsonb_array_length(public.list_encouragement_summaries(arra
 select extensions.throws_ok($$select public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)$$, 'P0001', 'FORBIDDEN', 'stranger detail is forbidden');
 select extensions.throws_ok($$select public.get_occurrence_detail(9223372036854775807)$$, 'P0001', 'NOT_FOUND', 'missing detail is distinct from forbidden');
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
-select public.hide_encouragement(current_setting('test.encouragement_id')::bigint, true);
-select extensions.is((public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)#>>'{summary,count}')::integer, 0, 'hidden encouragement excluded from summary count');
-select extensions.is(public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)#>'{summary,latestMessage}', 'null'::jsonb, 'hidden encouragement excluded from preview');
-select extensions.is(jsonb_array_length(public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)->'encouragements'), 1, 'owner can restore hidden encouragement in detail');
+select extensions.is((public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)#>>'{summary,count}')::integer, 1, 'received encouragement included in summary count');
+select extensions.is(public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)#>>'{summary,latestMessage,message}', 'Historic cheer', 'received encouragement included in preview');
+select extensions.is(jsonb_array_length(public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)->'encouragements'), 1, 'owner can read received encouragement in detail');
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
-select extensions.is(public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)#>>'{summary,myEncouragement,visibility}', 'hidden_by_owner', 'author can edit their own hidden encouragement');
+select extensions.is(public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)#>>'{summary,myEncouragement,visibility}', 'visible', 'author can edit their own encouragement');
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
 select public.reopen_occurrence(current_setting('test.owner_occurrence_id')::bigint);
 select extensions.is(jsonb_array_length(public.list_own_history()->'items'), 1, 'reopened occurrence remains in owner history');
@@ -816,8 +774,8 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001
 select extensions.is(jsonb_array_length(public.list_inbox()->'items'), 2, 'inbox excludes completions and other recipients');
 select extensions.is((public.get_inbox_unread_count()->>'unreadCount')::integer, 2, 'unread count excludes completion events');
 select extensions.is(jsonb_array_length(public.list_inbox('encouragement')->'items'), 1, 'encouragement filter is exact');
-select extensions.is(public.list_inbox('encouragement')#>>'{items,0,availability}', 'available', 'owner can open hidden historical encouragement detail');
-select extensions.is(public.list_inbox('encouragement')#>'{items,0,messagePreview}', 'null'::jsonb, 'hidden message cannot leak in inbox');
+select extensions.is(public.list_inbox('encouragement')#>>'{items,0,availability}', 'available', 'owner can open historical encouragement detail');
+select extensions.is(public.list_inbox('encouragement')#>>'{items,0,messagePreview}', 'Historic cheer', 'visible historical message remains in the owner inbox');
 select extensions.is(public.list_inbox('encouragement')#>>'{items,0,taskTitle}', 'Owner task', 'readable historical task title remains available');
 select extensions.is(public.list_inbox('connection')#>'{items,0,target}', 'null'::jsonb, 'stale acceptance has no private target');
 select extensions.is((public.mark_all_inbox_read(current_setting('test.inbox_highwater')::bigint)->>'updatedCount')::integer, 1, 'mark-all is bounded by observed highwater');

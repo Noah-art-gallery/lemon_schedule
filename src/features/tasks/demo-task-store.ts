@@ -5,6 +5,7 @@ import type {
   OccurrenceDetail,
   OwnHistoryItem,
   Reaction,
+  ProfileAvatarKey,
   SocialActivityItem,
 } from "@/types/contracts";
 import { AppError } from "@/lib/errors";
@@ -15,21 +16,21 @@ import { toDateKey } from "@/lib/time";
 import { addUtcDays } from "./recurrence";
 import type { TaskInput } from "./task-service";
 
-import type { ConnectionData } from "@/features/connections/connection-service";
+import type { ConnectionData, FriendSummary } from "@/features/connections/connection-service";
 
 export const DEMO_OWNER_ID = "demo";
-export const demoFriends = [
-  { id: "demo-friend-1", displayName: "지민" },
-  { id: "demo-friend-2", displayName: "서연" },
+export const demoFriends: FriendSummary[] = [
+  { id: "demo-friend-1", displayName: "지민", avatarKey: "cat" },
+  { id: "demo-friend-2", displayName: "서연", avatarKey: "rabbit" },
 ];
 const connectedIds = new Set(demoFriends.map((friend) => friend.id));
-const blockedIds = new Set<string>();
 let requests: ConnectionData["incoming"] = [
   {
     id: 41,
     requester_id: "demo-requester-1",
     addressee_id: DEMO_OWNER_ID,
     displayName: "민서",
+    avatarKey: "dog",
     status: "pending",
     created_at: new Date().toISOString(),
     responded_at: null,
@@ -42,6 +43,7 @@ let requests: ConnectionData["incoming"] = [
     requester_id: DEMO_OWNER_ID,
     addressee_id: "demo-requester-2",
     displayName: "준호",
+    avatarKey: "bear",
     status: "pending",
     created_at: new Date().toISOString(),
     responded_at: null,
@@ -63,9 +65,8 @@ export function demoGetConnections(): ConnectionData {
       .map((request) => ({ ...request })),
   };
 }
-export function demoDisconnectFriend(friendId: string, blocked = false) {
+export function demoDisconnectFriend(friendId: string) {
   connectedIds.delete(friendId);
-  if (blocked) blockedIds.add(friendId);
   requests = requests.filter(
     (request) => request.requester_id !== friendId && request.addressee_id !== friendId,
   );
@@ -77,7 +78,11 @@ export function demoRespondRequest(id: number, accept: boolean) {
   if (accept) {
     connectedIds.add(request.requester_id);
     if (!demoFriends.some((friend) => friend.id === request.requester_id))
-      demoFriends.push({ id: request.requester_id, displayName: request.displayName });
+      demoFriends.push({
+        id: request.requester_id,
+        displayName: request.displayName,
+        avatarKey: request.avatarKey,
+      });
   }
   requests = requests.filter((item) => item.id !== id);
   emit();
@@ -90,7 +95,6 @@ export function demoRequestConnection(code: string) {
   if (!code.trim() || code === "LEMON0001")
     throw new AppError("INVALID_INPUT", "상대의 초대 코드를 확인해 주세요");
   const id = `demo-invite-${code.trim().toUpperCase()}`;
-  if (blockedIds.has(id)) throw new AppError("FORBIDDEN", "차단된 사용자와는 연결할 수 없어요");
   if (requests.some((request) => request.addressee_id === id))
     throw new AppError("CONFLICT", "이미 보낸 요청이 있어요");
   requests.push({
@@ -98,6 +102,7 @@ export function demoRequestConnection(code: string) {
     requester_id: DEMO_OWNER_ID,
     addressee_id: id,
     displayName: code.trim().toUpperCase(),
+    avatarKey: "lemon",
     status: "pending",
     created_at: new Date().toISOString(),
     responded_at: null,
@@ -107,7 +112,20 @@ export function demoRequestConnection(code: string) {
   });
   emit();
 }
-let profile = { displayName: "하윤", timeZone: "Asia/Seoul" };
+let profile: { displayName: string; timeZone: string; avatarKey: ProfileAvatarKey } = {
+  displayName: "하윤",
+  timeZone: "Asia/Seoul",
+  avatarKey: "lemon",
+};
+export function demoAvatarKey(userId: string | null): ProfileAvatarKey {
+  if (userId === DEMO_OWNER_ID) return profile.avatarKey;
+  return (
+    demoFriends.find((friend) => friend.id === userId && connectedIds.has(userId))?.avatarKey ??
+    requests.find((request) => request.requester_id === userId || request.addressee_id === userId)
+      ?.avatarKey ??
+    "lemon"
+  );
+}
 let petImage: string | null = null;
 let decorations: PetDecorations = {
   selectedColor: "leaf-green",
@@ -123,21 +141,18 @@ export function demoGetProfile(): ProfileDetails {
     inviteCode: "LEMON0001",
     lemonPoints: points,
     petLevel: Math.floor(points / 5) + 1,
-    blocked: demoFriends
-      .filter((friend) => blockedIds.has(friend.id))
-      .map((friend) => ({ ...friend })),
   };
 }
-export function demoUpdateProfile(input: { displayName: string; timeZone: string }) {
+export function demoUpdateProfile(input: {
+  displayName?: string;
+  timeZone?: string;
+  avatarKey?: ProfileAvatarKey;
+}) {
   const parsed = profileInputSchema.safeParse(input);
   if (!parsed.success) throw new AppError("INVALID_INPUT", "닉네임과 시간대를 확인해 주세요");
   profile = { ...profile, ...parsed.data };
   emit();
   return { ...profile };
-}
-export function demoUnblockUser(id: string) {
-  blockedIds.delete(id);
-  emit();
 }
 export function demoGetPet(): PetDetails {
   const { lemonPoints, petLevel } = demoGetProfile();
@@ -241,6 +256,7 @@ function seed() {
       author_id: "demo-friend-1",
       owner_id: "demo",
       authorName: "지민",
+      authorAvatarKey: "cat",
       reaction: "clap",
       message: "오늘도 잊지 않고 했네!",
       visibility: "visible",
@@ -253,6 +269,7 @@ function seed() {
       author_id: "demo-friend-2",
       owner_id: "demo-friend-1",
       authorName: "서연",
+      authorAvatarKey: "rabbit",
       reaction: "heart",
       message: "어려운 문제도 끝까지 풀었네",
       visibility: "visible",
@@ -285,6 +302,7 @@ export function demoSummary(id: number): EncouragementSummary {
     result.latestMessage = {
       encouragementId: latest.id,
       authorName: latest.authorName,
+      authorAvatarKey: demoAvatarKey(latest.author_id),
       message: latest.message!,
       createdAt: latest.created_at,
     };
@@ -360,7 +378,7 @@ export function demoGetDetail(id: number): OccurrenceDetail {
   return {
     occurrence: { ...occurrence },
     owner: own
-      ? { id: DEMO_OWNER_ID, displayName: "나" }
+      ? { id: DEMO_OWNER_ID, displayName: "나", avatarKey: profile.avatarKey }
       : demoFriends.find((friend) => friend.id === occurrence.owner_id)!,
     taskDeleted,
     permissions: {
@@ -375,7 +393,7 @@ export function demoGetDetail(id: number): OccurrenceDetail {
           item.visibility !== "deleted_by_author" &&
           (own || item.visibility === "visible" || item.author_id === DEMO_OWNER_ID),
       )
-      .map((item) => ({ ...item })),
+      .map((item) => ({ ...item, authorAvatarKey: demoAvatarKey(item.author_id) })),
     summary: demoSummary(id),
   };
 }
@@ -468,6 +486,9 @@ export function demoToggleOccurrence(id: number) {
   return { firstCompletion };
 }
 export function demoSendEncouragement(id: number, reaction: Reaction | null, message: string) {
+  const normalizedMessage = message.trim() || null;
+  if ((normalizedMessage?.length ?? 0) > 120 || (!reaction && !normalizedMessage))
+    throw new AppError("INVALID_INPUT", "반응이나 120자 이하 응원글을 입력해 주세요");
   const detail = demoGetDetail(id);
   if (!detail.permissions.canEncourage)
     throw new AppError("FORBIDDEN", "지금은 응원을 보낼 수 없어요");
@@ -476,8 +497,8 @@ export function demoSendEncouragement(id: number, reaction: Reaction | null, mes
   if (row) {
     Object.assign(row, {
       reaction,
-      message: message.trim() || null,
-      visibility: row.visibility === "hidden_by_owner" ? "hidden_by_owner" : "visible",
+      message: normalizedMessage,
+      visibility: "visible",
       updated_at: now,
     });
   } else {
@@ -487,8 +508,9 @@ export function demoSendEncouragement(id: number, reaction: Reaction | null, mes
       owner_id: detail.owner.id,
       author_id: DEMO_OWNER_ID,
       authorName: "나",
+      authorAvatarKey: profile.avatarKey,
       reaction,
-      message: message.trim() || null,
+      message: normalizedMessage,
       visibility: "visible",
       created_at: now,
       updated_at: now,
@@ -496,15 +518,12 @@ export function demoSendEncouragement(id: number, reaction: Reaction | null, mes
   }
   emit();
 }
-export function demoHideEncouragement(id: number, hidden: boolean) {
-  seed();
-  const row = cheers.find((item) => item.id === id);
-  if (row) row.visibility = hidden ? "hidden_by_owner" : "visible";
-  emit();
-}
 export function demoDeleteEncouragement(id: number) {
   seed();
   const row = cheers.find((item) => item.id === id);
-  if (row) row.visibility = "deleted_by_author";
+  if (!row) throw new AppError("NOT_FOUND", "응원을 찾지 못했어요");
+  if (row.author_id !== DEMO_OWNER_ID)
+    throw new AppError("FORBIDDEN", "직접 보낸 응원만 삭제할 수 있어요");
+  row.visibility = "deleted_by_author";
   emit();
 }

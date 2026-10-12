@@ -6,7 +6,7 @@ import { EncouragementComposer } from "@/features/encouragements/encouragement-c
 import { TaskEditor } from "./task-editor";
 
 describe("task interaction preservation", () => {
-  it("quick reaction preserves the existing sent message instead of submitting an unsent draft", async () => {
+  it("reaction selection preserves the draft and submits only on explicit save", async () => {
     const send = vi.fn().mockResolvedValue(undefined);
     render(
       <EncouragementComposer
@@ -17,7 +17,9 @@ describe("task interaction preservation", () => {
     );
     fireEvent.change(screen.getByLabelText("응원글"), { target: { value: "작성 중" } });
     fireEvent.click(screen.getByRole("button", { name: "박수" }));
-    await waitFor(() => expect(send).toHaveBeenCalledWith("clap", "기존 응원"));
+    expect(send).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "응원 수정" }));
+    await waitFor(() => expect(send).toHaveBeenCalledWith("clap", "작성 중"));
     expect(screen.getByLabelText("응원글")).toHaveValue("작성 중");
   });
   it("failed send preserves draft and permits retry", async () => {

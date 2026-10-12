@@ -38,6 +38,14 @@ import { AppError } from "@/lib/errors";
 import { toDateKey, getDeviceTimeZone } from "@/lib/time";
 import styles from "@/features/tasks/task-experience.module.css";
 
+function readableDate(value: string) {
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+    timeZone: "UTC",
+  }).format(new Date(`${value}T00:00:00Z`));
+}
 type Tab = "today" | "upcoming" | "history";
 function newerCursor(left: CompletionCursor, right: CompletionCursor) {
   return (
@@ -64,6 +72,8 @@ export function HomeScreen() {
   const [historyError, setHistoryError] = useState("");
   const [pending, setPending] = useState<Set<number>>(new Set());
   const pendingRef = useRef(new Set<number>());
+  const [retainedOverdue, setRetainedOverdue] = useState<Set<number>>(new Set());
+  const [rowErrors, setRowErrors] = useState<Map<number, string>>(new Map());
   const [selected, setSelected] = useState<number | null>(null);
   const closingQuery = useRef(false);
   const addTrigger = useRef<HTMLButtonElement>(null);
@@ -116,6 +126,7 @@ export function HomeScreen() {
     }
     setLoading(true);
     setError("");
+    setRetainedOverdue(new Set());
     try {
       if (demo) {
         const rows = demoListOwn();
@@ -239,6 +250,7 @@ export function HomeScreen() {
     };
   }, [tab, loadHistory]);
   const refresh = useCallback(() => {
+    if (pendingRef.current.size) return;
     void load();
     if (tab === "history") void loadHistory();
   }, [load, loadHistory, tab]);
@@ -307,7 +319,11 @@ export function HomeScreen() {
     if (pendingRef.current.has(row.id)) return;
     pendingRef.current.add(row.id);
     setPending(new Set(pendingRef.current));
-    setError("");
+    setRowErrors((previous) => {
+      const next = new Map(previous);
+      next.delete(row.id);
+      return next;
+    });
     try {
       if (demo) {
         if (demoToggleOccurrence(row.id).firstCompletion) {
@@ -320,10 +336,30 @@ export function HomeScreen() {
         if (result.firstCompletion)
           setFeedback(`완료 · 펫이 ${result.rewardPoints}포인트 성장했어요`);
       }
-      await load();
-      if (tab === "history") await loadHistory();
+      const status = row.status === "completed" ? "pending" : "completed";
+      if (row.occurrence_date < ownerToday)
+        setRetainedOverdue((previous) => new Set(previous).add(row.id));
+      setItems((previous) =>
+        previous.map((item) => (item.id === row.id ? { ...item, status } : item)),
+      );
+      setHistory((previous) =>
+        previous.map((item) =>
+          item.occurrence.id === row.id
+            ? { ...item, occurrence: { ...item.occurrence, status } }
+            : item,
+        ),
+      );
+      if (demo)
+        setPet((previous) =>
+          previous ? { ...previous, points: demoListHistory().length } : previous,
+        );
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "상태를 저장하지 못했어요");
+      setRowErrors((previous) =>
+        new Map(previous).set(
+          row.id,
+          cause instanceof Error ? cause.message : "상태를 저장하지 못했어요",
+        ),
+      );
     } finally {
       pendingRef.current.delete(row.id);
       setPending(new Set(pendingRef.current));
@@ -342,7 +378,11 @@ export function HomeScreen() {
   }
   const todayItems = items.filter((item) => item.occurrence_date === ownerToday);
   const overdue = items
-    .filter((item) => item.occurrence_date < ownerToday && item.status === "pending")
+    .filter(
+      (item) =>
+        item.occurrence_date < ownerToday &&
+        (item.status === "pending" || retainedOverdue.has(item.id)),
+    )
     .sort((a, b) => a.occurrence_date.localeCompare(b.occurrence_date));
   const upcoming = items
     .filter((item) => item.occurrence_date > ownerToday)
@@ -351,7 +391,7 @@ export function HomeScreen() {
     return list.map((row, index) => (
       <div key={row.id}>
         {dates && (!index || list[index - 1].occurrence_date !== row.occurrence_date) ? (
-          <h3 className={styles.groupDate}>{row.occurrence_date}</h3>
+          <h3 className={styles.groupDate}>{readableDate(row.occurrence_date)}</h3>
         ) : null}
         <TaskRowView
           occurrence={row}
@@ -359,11 +399,14 @@ export function HomeScreen() {
           pending={pending.has(row.id)}
           onOpen={() => open(row.id)}
           onToggle={() => {
-            // The compiler follows this callback through the row factory; it runs only on click.
-            // eslint-disable-next-line react-hooks/refs
             void toggle(row);
           }}
         />
+        {rowErrors.get(row.id) ? (
+          <p role="alert" className={styles.error}>
+            {rowErrors.get(row.id)}
+          </p>
+        ) : null}
       </div>
     ));
   }
@@ -396,7 +439,10 @@ export function HomeScreen() {
             role="tab"
             aria-selected={tab === value}
             className={styles.tab}
-            onClick={() => setTab(value)}
+            onClick={() => {
+              setRetainedOverdue(new Set());
+              setTab(value);
+            }}
           >
             {label}
           </button>
@@ -432,8 +478,8 @@ export function HomeScreen() {
       {tab === "today" && !error && (!loading || items.length > 0) ? (
         <>
           <div className={styles.toolbar}>
-            <h2 className={styles.sectionTitle}>{ownerToday}</h2>
-            <span className={styles.status}>
+            <h2 className={styles.sectionTitle}>{readableDate(ownerToday)}</h2>
+            <span className={styles.progress}>
               {todayItems.filter((item) => item.status === "completed").length}/{todayItems.length}{" "}
               완료
             </span>
@@ -510,7 +556,9 @@ export function HomeScreen() {
             <div key={item.occurrence.id}>
               {!index ||
               history[index - 1].occurrence.occurrence_date !== item.occurrence.occurrence_date ? (
-                <h3 className={styles.groupDate}>{item.occurrence.occurrence_date}</h3>
+                <h3 className={styles.groupDate}>
+                  {readableDate(item.occurrence.occurrence_date)}
+                </h3>
               ) : null}
               <TaskRowView
                 occurrence={item.occurrence}
@@ -596,6 +644,21 @@ export function HomeScreen() {
         encouragementId={targetCheer}
         onClose={closeDetail}
         onChanged={refresh}
+        onCompletionChanged={(id, status) => {
+          const row = items.find((item) => item.id === id);
+          if (row && row.occurrence_date < ownerToday)
+            setRetainedOverdue((previous) => new Set(previous).add(id));
+          setItems((previous) =>
+            previous.map((item) => (item.id === id ? { ...item, status } : item)),
+          );
+          setHistory((previous) =>
+            previous.map((item) =>
+              item.occurrence.id === id
+                ? { ...item, occurrence: { ...item.occurrence, status } }
+                : item,
+            ),
+          );
+        }}
       />
       {feedback ? (
         <div role="status" className={styles.toast}>

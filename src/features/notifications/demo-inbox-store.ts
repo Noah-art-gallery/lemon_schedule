@@ -29,6 +29,7 @@ export function demoInboxItems(): InboxItem[] {
     id: 3,
     type: "encouragement_received",
     actorName: "지민",
+    actorAvatarKey: tasks.demoAvatarKey("demo-friend-1"),
     availability: "unavailable",
     target: null,
   };
@@ -57,6 +58,7 @@ export function demoInboxItems(): InboxItem[] {
       id: 2,
       type: "connection_request",
       actorName: "민서",
+      actorAvatarKey: pending ? tasks.demoAvatarKey("demo-requester-1") : "lemon",
       connectionRequestId: 41,
       availability: pending ? "available" : "unavailable",
       target: pending ? "/friends/?request=41" : null,
@@ -66,6 +68,7 @@ export function demoInboxItems(): InboxItem[] {
       id: 1,
       type: "connection_accepted",
       actorName: "지민",
+      actorAvatarKey: tasks.demoAvatarKey("demo-friend-1"),
       availability: friend ? "available" : "unavailable",
       target: friend ? "/friends/?friend=demo-friend-1" : null,
     },

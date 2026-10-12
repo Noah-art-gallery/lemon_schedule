@@ -63,7 +63,7 @@ beforeEach(() => {
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   vi.mocked(listOccurrenceWindow).mockResolvedValue({ today: "2026-10-12", occurrences: [] });
   vi.mocked(getConnectionData).mockResolvedValue({
-    friends: [{ id: "demo-friend-1", connectionId: 71, displayName: "지민" }],
+    friends: [{ id: "demo-friend-1", connectionId: 71, displayName: "지민", avatarKey: "lemon" }],
     incoming: [],
     outgoing: [],
   });

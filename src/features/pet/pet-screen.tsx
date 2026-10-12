@@ -40,6 +40,15 @@ export function PetScreen() {
   const [drawing, setDrawing] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [discard, setDiscard] = useState(false);
+  const continueRef = useRef<HTMLButtonElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const wasDiscarding = useRef(false);
+  useEffect(() => {
+    if (discard) continueRef.current?.focus();
+    else if (wasDiscarding.current)
+      editorRef.current?.querySelector<HTMLElement>("input, button:not(:disabled)")?.focus();
+    wasDiscarding.current = discard;
+  }, [discard]);
   const [saving, setSaving] = useState(false);
   const pending = useRef(false);
   const [notice, setNotice] = useState("");
@@ -171,21 +180,37 @@ export function PetScreen() {
       ) : (
         <div className={styles.layout}>
           <section className={styles.summary} aria-label="내 펫">
-            <div
-              className={`${styles.stage} ${pet.decorations.selectedBackground === "sunny-garden" ? styles.garden : ""}`}
-            >
-              {pet.decorations.selectedAccessory === "leaf-hat" ? (
-                <Leaf className={styles.accessory} size={36} aria-label="잎사귀 모자" />
-              ) : null}
-              <Image
-                src={imageUrl || "/images/lemon-pet-default.png"}
-                alt={imageUrl ? "내 펫" : "기본 레몬 펫"}
-                width={240}
-                height={240}
-                className={styles.image}
-                unoptimized={!!imageUrl}
-                priority
-              />
+            <div className={styles.appearance}>
+              <div
+                className={`${styles.stage} ${pet.decorations.selectedBackground === "sunny-garden" ? styles.garden : ""}`}
+              >
+                {pet.decorations.selectedAccessory === "leaf-hat" ? (
+                  <Leaf className={styles.accessory} size={36} aria-label="잎사귀 모자" />
+                ) : null}
+                <Image
+                  src={imageUrl || "/images/lemon-pet-default.png"}
+                  alt={imageUrl ? "내 펫" : "기본 레몬 펫"}
+                  width={240}
+                  height={240}
+                  className={styles.image}
+                  unoptimized={!!imageUrl}
+                  priority
+                />
+              </div>
+              <Button
+                size="lg"
+                fullWidth
+                onClick={() => {
+                  setError("");
+                  setDiscard(false);
+                  setDirty(false);
+                  setDrawing(true);
+                }}
+                disabled={saving}
+              >
+                <Palette size={18} aria-hidden="true" />
+                새로 그리기
+              </Button>
             </div>
             <div className={styles.growth}>
               <span className={styles.level}>레벨 {pet.petLevel}</span>
@@ -209,19 +234,6 @@ export function PetScreen() {
                   ? `${nextUnlock.points - pet.lemonPoints}점 더 모으면 ${nextUnlock.label}`
                   : "모든 꾸미기를 열었어요"}
               </p>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setError("");
-                  setDiscard(false);
-                  setDirty(false);
-                  setDrawing(true);
-                }}
-                disabled={saving}
-              >
-                <Palette size={18} aria-hidden="true" />
-                새로 그리기
-              </Button>
             </div>
             {imageError ? (
               <div className={styles.imageError}>
@@ -311,7 +323,7 @@ export function PetScreen() {
           <div className={styles.discard}>
             <p>그리던 그림을 버릴까요?</p>
             <div className="button-row">
-              <Button variant="secondary" onClick={() => setDiscard(false)}>
+              <Button ref={continueRef} variant="secondary" onClick={() => setDiscard(false)}>
                 계속 그리기
               </Button>
               <Button variant="danger" onClick={close}>
@@ -320,7 +332,7 @@ export function PetScreen() {
             </div>
           </div>
         ) : null}
-        <div hidden={discard}>
+        <div ref={editorRef} hidden={discard}>
           {drawing ? (
             <PetCanvas
               onSave={save}

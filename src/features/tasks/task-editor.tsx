@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState, useEffect, type FormEvent } from "react";
+import { useId, useRef, useState, useEffect, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { taskInputSchema, type TaskInput } from "./task-service";
 import styles from "./task-experience.module.css";
@@ -18,7 +18,11 @@ export function TaskEditor({
   onBusyChange?: (busy: boolean) => void;
   editing?: boolean;
 }) {
+  const optionsId = useId();
   const [values, setValues] = useState(initial);
+  const [optionsOpen, setOptionsOpen] = useState(
+    Boolean(editing && (initial.dueTime || initial.recurrence !== "none")),
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const lock = useRef(false);
@@ -87,33 +91,44 @@ export function TaskEditor({
           onChange={(event) => change({ dueDate: event.target.value })}
         />
       </label>
-      <div className={styles.formGrid}>
-        <label className={styles.label}>
-          시간 (선택)
-          <input
-            disabled={saving}
-            type="time"
-            className={styles.input}
-            value={values.dueTime ?? ""}
-            onChange={(event) => change({ dueTime: event.target.value })}
-          />
-        </label>
-        <label className={styles.label}>
-          반복
-          <select
-            disabled={saving}
-            className={styles.input}
-            value={values.recurrence ?? "none"}
-            onChange={(event) =>
-              change({ recurrence: event.target.value as TaskInput["recurrence"] })
-            }
-          >
-            <option value="none">반복 안 함</option>
-            <option value="daily">매일</option>
-            <option value="weekly">매주</option>
-            <option value="monthly">매월</option>
-          </select>
-        </label>
+      <button
+        type="button"
+        className={styles.optionsToggle}
+        aria-expanded={optionsOpen}
+        aria-controls={optionsId}
+        onClick={() => setOptionsOpen(!optionsOpen)}
+      >
+        시간·반복 <span>{optionsOpen ? "접기" : "펼치기"}</span>
+      </button>
+      <div id={optionsId} hidden={!optionsOpen}>
+        <div className={styles.formGrid}>
+          <label className={styles.label}>
+            시간 (선택)
+            <input
+              disabled={saving}
+              type="time"
+              className={styles.input}
+              value={values.dueTime ?? ""}
+              onChange={(event) => change({ dueTime: event.target.value })}
+            />
+          </label>
+          <label className={styles.label}>
+            반복
+            <select
+              disabled={saving}
+              className={styles.input}
+              value={values.recurrence ?? "none"}
+              onChange={(event) =>
+                change({ recurrence: event.target.value as TaskInput["recurrence"] })
+              }
+            >
+              <option value="none">반복 안 함</option>
+              <option value="daily">매일</option>
+              <option value="weekly">매주</option>
+              <option value="monthly">매월</option>
+            </select>
+          </label>
+        </div>
       </div>
       {editing && initial.recurrence !== "none" ? (
         <p className={styles.status}>

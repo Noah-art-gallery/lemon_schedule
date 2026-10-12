@@ -47,6 +47,7 @@ const cheer: InboxItem = {
   id: 9,
   type: "encouragement_received",
   actorName: "지민",
+  actorAvatarKey: "cat",
   createdAt: "2026-10-12T00:00:00Z",
   readAt: null,
   occurrenceId: 1,

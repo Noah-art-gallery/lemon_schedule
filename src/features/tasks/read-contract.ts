@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { AppError } from "@/lib/errors";
-import { reactionValues, recurrenceValues, encouragementVisibilityValues } from "@/types/contracts";
+import {
+  profileAvatarKeys,
+  reactionValues,
+  recurrenceValues,
+  encouragementVisibilityValues,
+} from "@/types/contracts";
+export const avatarKeySchema = z.enum(profileAvatarKeys).default("lemon");
 export const positiveId = z.number().int().positive();
 const timestamp = z.iso.datetime({ offset: true });
 export const completionCursor = z.object({ firstCompletedAt: timestamp, occurrenceId: positiveId });
@@ -35,6 +41,7 @@ export const summarySchema = z.object({
     .object({
       encouragementId: positiveId,
       authorName: z.string(),
+      authorAvatarKey: avatarKeySchema,
       message: z.string(),
       createdAt: timestamp,
     })
@@ -48,7 +55,11 @@ export const summarySchema = z.object({
     })
     .nullable(),
 });
-export const ownerSchema = z.object({ id: z.uuid(), displayName: z.string() });
+export const ownerSchema = z.object({
+  id: z.uuid(),
+  displayName: z.string(),
+  avatarKey: avatarKeySchema,
+});
 export const encouragementSchema = z.object({
   id: positiveId,
   occurrence_id: positiveId,
@@ -60,6 +71,7 @@ export const encouragementSchema = z.object({
   created_at: timestamp,
   updated_at: timestamp,
   authorName: z.string(),
+  authorAvatarKey: avatarKeySchema,
 });
 export function parseRead<T>(schema: z.ZodType<T>, value: unknown): T {
   const parsed = schema.safeParse(value);

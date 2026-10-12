@@ -1,0 +1,54 @@
+.editor {
+  display: grid;
+  gap: 16px;
+}
+.canvas {
+  display: block;
+  width: 100%;
+  height: 220px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  cursor: crosshair;
+  touch-action: none;
+}
+.toolbar,
+.toolGroup,
+.opacity {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.toolbar {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+.toolGroup,
+.opacity {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.toolGroup button,
+.opacity button {
+  border-color: transparent;
+}
+.toolGroup button[aria-pressed="true"],
+.opacity button[aria-pressed="true"] {
+  background: var(--lemon-100);
+  color: var(--ink);
+}
+.opacity {
+  color: var(--muted);
+  font-size: 14px;
+}
+.opacity > span {
+  margin-right: 4px;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 4px;
+}

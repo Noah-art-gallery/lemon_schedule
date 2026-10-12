@@ -4,17 +4,8 @@ import { MoreHorizontal } from "lucide-react";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/features/auth/auth-provider";
-import {
-  EncouragementComposer,
-  reactionLabels,
-} from "@/features/encouragements/encouragement-composer";
-import {
-  sendEncouragement,
-  hideEncouragement,
-  deleteEncouragement,
-  type EncouragementDisplay,
-} from "@/features/encouragements/encouragement-service";
-import type { OccurrenceDetail, Reaction } from "@/types/contracts";
+import { EncouragementThread } from "@/features/encouragements/encouragement-thread";
+import type { OccurrenceDetail } from "@/types/contracts";
 import {
   completeOccurrence,
   deleteTask,
@@ -30,9 +21,6 @@ import {
   demoUpdateTask,
   demoDeleteTask,
   demoToggleOccurrence,
-  demoSendEncouragement,
-  demoHideEncouragement,
-  demoDeleteEncouragement,
 } from "./demo-task-store";
 import { TaskEditor } from "./task-editor";
 import styles from "./task-experience.module.css";
@@ -42,6 +30,7 @@ export interface OccurrenceDetailPanelProps {
   encouragementId?: number | null;
   onClose: () => void;
   onChanged?: () => void;
+  onCompletionChanged?: (occurrenceId: number, status: "pending" | "completed") => void;
   onResolved?: (detail: OccurrenceDetail) => void;
   notice?: ReactNode;
 }
@@ -50,6 +39,7 @@ export function OccurrenceDetailPanel({
   encouragementId,
   onClose,
   onChanged,
+  onCompletionChanged,
   onResolved,
   notice,
 }: OccurrenceDetailPanelProps) {
@@ -62,9 +52,7 @@ export function OccurrenceDetailPanel({
   const [editor, setEditor] = useState<TaskInput | null>(null);
   const [discard, setDiscard] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const [deleteCheer, setDeleteCheer] = useState<number | null>(null);
   const [effectiveId, setEffectiveId] = useState(occurrenceId);
-  const [composerVersion, setComposerVersion] = useState(0);
   const [feedback, setFeedback] = useState("");
   const detailHeading = useRef<HTMLHeadingElement>(null);
   const restoreDetailFocus = useRef(false);
@@ -74,9 +62,9 @@ export function OccurrenceDetailPanel({
   const generation = useRef(0);
   const activeId = useRef(effectiveId);
   const targetId = useRef(occurrenceId);
-  const callbacks = useRef({ onChanged, onResolved, onClose });
+  const callbacks = useRef({ onChanged, onCompletionChanged, onResolved, onClose });
   useEffect(() => {
-    callbacks.current = { onChanged, onResolved, onClose };
+    callbacks.current = { onChanged, onCompletionChanged, onResolved, onClose };
   });
   useEffect(() => {
     targetId.current = occurrenceId;
@@ -116,8 +104,6 @@ export function OccurrenceDetailPanel({
       setDetail(null);
       setEditor(null);
       setDeleteConfirm(false);
-      setDeleteCheer(null);
-      setComposerVersion((value) => value + 1);
       dirty.current = false;
       if (effectiveId !== null) void load(effectiveId);
     });
@@ -127,12 +113,6 @@ export function OccurrenceDetailPanel({
       generation.current++;
     };
   }, [effectiveId, load]);
-  useEffect(() => {
-    if (loading || !detail || !encouragementId) return;
-    document
-      .getElementById(`encouragement-${encouragementId}`)
-      ?.scrollIntoView({ block: "nearest", behavior: "instant" });
-  }, [loading, detail, encouragementId]);
   useEffect(() => {
     if (!feedback) return;
     const timer = setTimeout(() => setFeedback(""), 2800);
@@ -164,7 +144,7 @@ export function OccurrenceDetailPanel({
       setEffectiveId(targetId.current);
     } else callbacks.current.onClose();
   }
-  async function mutation(action: () => Promise<void> | void) {
+  async function mutation(action: () => Promise<void> | void, completion = false) {
     if (lock.current || effectiveId === null) return;
     const id = effectiveId;
     lock.current = true;
@@ -173,7 +153,12 @@ export function OccurrenceDetailPanel({
     try {
       await action();
       if (activeId.current === id) {
-        callbacks.current.onChanged?.();
+        if (completion && callbacks.current.onCompletionChanged && detail) {
+          callbacks.current.onCompletionChanged(
+            id,
+            detail.occurrence.status === "completed" ? "pending" : "completed",
+          );
+        } else callbacks.current.onChanged?.();
         restoreDetailFocus.current = true;
         await load(id);
       }
@@ -194,34 +179,6 @@ export function OccurrenceDetailPanel({
       setSaving(false);
     }
   }
-  async function send(reaction: Reaction | null, message: string) {
-    if (effectiveId === null) return;
-    const id = effectiveId;
-    const version = ++generation.current;
-    lock.current = true;
-    try {
-      if (demo) demoSendEncouragement(id, reaction, message);
-      else await sendEncouragement(id, reaction, message);
-      if (activeId.current !== id || version !== generation.current) return;
-      callbacks.current.onChanged?.();
-      const fresh = demo ? demoGetDetail(id) : await getOccurrenceDetail({ occurrenceId: id });
-      if (activeId.current === id && version === generation.current) setDetail(fresh);
-    } catch (cause) {
-      if (
-        activeId.current === id &&
-        cause instanceof Error &&
-        "code" in cause &&
-        (cause.code === "FORBIDDEN" || cause.code === "NOT_FOUND")
-      ) {
-        setDetail(null);
-        dirty.current = false;
-        setError(cause.message);
-      }
-      throw cause;
-    } finally {
-      lock.current = false;
-    }
-  }
   async function beginEdit() {
     if (!detail || lock.current) return;
     lock.current = true;
@@ -240,72 +197,6 @@ export function OccurrenceDetailPanel({
       setSaving(false);
     }
   }
-  function cheerRow(item: EncouragementDisplay) {
-    return (
-      <article
-        key={item.id}
-        id={`encouragement-${item.id}`}
-        className={`${styles.cheer} ${item.id === encouragementId ? styles.highlight : ""}`}
-      >
-        <div className={styles.cheerHead}>
-          <strong>
-            {item.authorName}
-            {item.reaction ? ` · ${reactionLabels[item.reaction]}` : ""}
-          </strong>
-          {item.author_id === viewer || detail?.owner.id === viewer ? (
-            <details className={styles.more}>
-              <summary aria-label={`${item.authorName} 응원 메뉴`}>
-                <MoreHorizontal size={18} />
-              </summary>
-              <div className={styles.menu}>
-                {item.author_id === viewer ? (
-                  <>
-                    <button
-                      onClick={() => {
-                        document
-                          .getElementById("detail-composer")
-                          ?.scrollIntoView({ block: "center" });
-                        document
-                          .querySelector<HTMLTextAreaElement>("#detail-composer textarea")
-                          ?.focus();
-                      }}
-                    >
-                      수정
-                    </button>
-                    <button
-                      className={styles.danger}
-                      disabled={saving}
-                      onClick={() => setDeleteCheer(item.id)}
-                    >
-                      응원 삭제
-                    </button>
-                  </>
-                ) : null}
-                {detail?.owner.id === viewer ? (
-                  <button
-                    disabled={saving}
-                    onClick={() =>
-                      void mutation(async () => {
-                        const hidden = item.visibility !== "hidden_by_owner";
-                        if (demo) demoHideEncouragement(item.id, hidden);
-                        else await hideEncouragement(item.id, hidden);
-                      })
-                    }
-                  >
-                    {item.visibility === "hidden_by_owner" ? "다시 표시" : "숨기기"}
-                  </button>
-                ) : null}
-              </div>
-            </details>
-          ) : null}
-        </div>
-        {item.message ? <p>{item.message}</p> : null}
-        <small>{new Date(item.created_at).toLocaleDateString("ko-KR")}</small>
-      </article>
-    );
-  }
-  const hidden =
-    detail?.encouragements.filter((item) => item.visibility === "hidden_by_owner") ?? [];
   return (
     <Panel
       open={effectiveId !== null}
@@ -446,7 +337,7 @@ export function OccurrenceDetailPanel({
                       if (result.firstCompletion)
                         setFeedback(`완료 · 펫이 ${result.rewardPoints}포인트 성장했어요`);
                     }
-                  })
+                  }, true)
                 }
               >
                 {detail.occurrence.status === "completed" ? "완료 취소" : "완료하기"}
@@ -487,66 +378,24 @@ export function OccurrenceDetailPanel({
               </div>
             </section>
           ) : null}
-          {deleteCheer !== null ? (
-            <section className={styles.inlineConfirm} aria-label="응원 삭제 확인">
-              <p>보낸 응원을 삭제할까요? 작성 중인 내용도 함께 지워집니다.</p>
-              <div className={styles.actions}>
-                <Button
-                  variant="secondary"
-                  autoFocus
-                  disabled={saving}
-                  onClick={() => setDeleteCheer(null)}
-                >
-                  취소
-                </Button>
-                <Button
-                  variant="danger"
-                  loading={saving}
-                  onClick={() =>
-                    void mutation(async () => {
-                      if (demo) demoDeleteEncouragement(deleteCheer);
-                      else await deleteEncouragement(deleteCheer);
-                      setDeleteCheer(null);
-                      setComposerVersion((value) => value + 1);
-                      dirty.current = false;
-                    })
-                  }
-                >
-                  삭제 확인
-                </Button>
-              </div>
-            </section>
-          ) : null}
-          <section aria-label="응원 내역">
-            <h3 className={styles.sectionTitle}>
-              응원 <span>{detail.summary.count}</span>
-            </h3>
-            {detail.encouragements.filter((item) => item.visibility === "visible").map(cheerRow)}
-            {!detail.summary.count ? <p className={styles.status}>아직 응원이 없어요</p> : null}
-          </section>
-          {hidden.length > 0 ? (
-            <details
-              className={styles.hiddenSection}
-              open={hidden.some((item) => item.id === encouragementId)}
-            >
-              <summary>
-                {detail.owner.id === viewer ? "숨긴 응원" : "상대가 숨긴 내 응원"} {hidden.length}
-              </summary>
-              {hidden.map(cheerRow)}
-            </details>
-          ) : null}
-          {detail.permissions.canEncourage ? (
-            <div id="detail-composer">
-              <EncouragementComposer
-                key={`${effectiveId}-${composerVersion}`}
-                existing={detail.summary.myEncouragement}
-                onSend={send}
-                onDirtyChange={(value) => {
-                  dirty.current = value;
-                }}
-              />
-            </div>
-          ) : null}
+          <EncouragementThread
+            key={effectiveId}
+            occurrenceId={detail.occurrence.id}
+            summary={detail.summary}
+            initialDetail={detail}
+            canCompose={detail.permissions.canEncourage}
+            targetEncouragementId={encouragementId}
+            onDirtyChange={(value) => {
+              dirty.current = value;
+            }}
+            onBusyChange={(busy) => {
+              lock.current = busy;
+            }}
+            onChanged={(fresh) => {
+              setDetail(fresh);
+              callbacks.current.onChanged?.();
+            }}
+          />
         </>
       ) : null}
       {feedback ? (

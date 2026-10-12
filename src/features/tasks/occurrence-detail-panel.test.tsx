@@ -1,7 +1,4 @@
-import {
-  deleteEncouragement,
-  hideEncouragement,
-} from "@/features/encouragements/encouragement-service";
+import { deleteEncouragement } from "@/features/encouragements/encouragement-service";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { OccurrenceDetailPanel } from "./occurrence-detail-panel";
@@ -20,7 +17,6 @@ vi.mock("./task-service", async (importOriginal) => ({
 vi.mock("@/features/encouragements/encouragement-service", async (original) => ({
   ...(await original<typeof import("@/features/encouragements/encouragement-service")>()),
   deleteEncouragement: vi.fn(),
-  hideEncouragement: vi.fn(),
 }));
 vi.mock("@/lib/supabase/client", () => ({ getSupabaseClient: vi.fn() }));
 afterEach(() => {
@@ -126,9 +122,9 @@ it("requires confirmation before deleting a sent encouragement with an unsent dr
   };
   vi.mocked(getOccurrenceDetail).mockResolvedValue(detail);
   render(<OccurrenceDetailPanel occurrenceId={101} onClose={() => {}} />);
+  fireEvent.click(await screen.findByRole("button", { name: "응원 수정" }));
   const input = await screen.findByLabelText("응원글");
   fireEvent.change(input, { target: { value: "지우면 안 되는 작성 중 글" } });
-  fireEvent.click(screen.getByLabelText("나 응원 메뉴"));
   fireEvent.click(screen.getByRole("button", { name: "응원 삭제" }));
   expect(deleteEncouragement).not.toHaveBeenCalled();
   expect(input).toHaveValue("지우면 안 되는 작성 중 글");
@@ -136,16 +132,42 @@ it("requires confirmation before deleting a sent encouragement with an unsent dr
   expect(input).toHaveValue("지우면 안 되는 작성 중 글");
 });
 
-it("returns focus inside the detail after hiding an encouragement rebuilds the menu", async () => {
+it("keeps received encouragement visible without owner hiding controls", async () => {
   vi.mocked(getOccurrenceDetail).mockResolvedValue(demoGetDetail(1));
-  vi.mocked(hideEncouragement).mockResolvedValue({
-    encouragementId: 11,
-    visibility: "hidden_by_owner",
-  });
   render(<OccurrenceDetailPanel occurrenceId={1} onClose={() => {}} />);
   await screen.findByRole("heading", { name: "물 2잔 마시기" });
-  fireEvent.click(screen.getByLabelText("지민 응원 메뉴"));
-  fireEvent.click(screen.getByRole("button", { name: "숨기기" }));
-  await waitFor(() => expect(hideEncouragement).toHaveBeenCalled());
-  await waitFor(() => expect(screen.getByRole("heading", { name: "물 2잔 마시기" })).toHaveFocus());
+  expect(screen.queryByRole("button", { name: "숨기기" })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("지민 응원 메뉴")).not.toBeInTheDocument();
+});
+
+it("reports completed status without forcing a list refresh when the home preserves placement", async () => {
+  const before = demoGetDetail(2);
+  vi.mocked(getOccurrenceDetail)
+    .mockResolvedValueOnce(before)
+    .mockResolvedValueOnce({
+      ...before,
+      occurrence: { ...before.occurrence, status: "completed" },
+    });
+  vi.mocked(completeOccurrence).mockResolvedValue({
+    status: "completed",
+    completedAt: "2026-10-12T12:00:00Z",
+    firstCompletion: false,
+    rewardGranted: false,
+    rewardPoints: 0,
+    completionEventId: 1,
+  });
+  const changed = vi.fn();
+  const completed = vi.fn();
+  render(
+    <OccurrenceDetailPanel
+      occurrenceId={2}
+      onClose={vi.fn()}
+      onChanged={changed}
+      onCompletionChanged={completed}
+    />,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "완료하기" }));
+  await waitFor(() => expect(completed).toHaveBeenCalledWith(2, "completed"));
+  expect(changed).not.toHaveBeenCalled();
+  expect(await screen.findByRole("button", { name: "완료 취소" })).toBeVisible();
 });

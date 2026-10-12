@@ -1,0 +1,6 @@
+Twemoji graphics by Twitter, Inc and other contributors.
+Source: https://github.com/jdecked/twemoji/tree/b6b55fef1e8636b540a6d016a4729ca8cdf2e60b/assets/svg
+License: CC BY 4.0 https://creativecommons.org/licenses/by/4.0/
+License text: /reactions/LICENSE-GRAPHICS.txt
+Original artwork unmodified; renamed for profile options.
+lemon 1f34b; cat 1f431; dog 1f436; rabbit 1f430; bear 1f43b; fox 1f98a; penguin 1f427; flower 1f337.

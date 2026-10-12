@@ -73,3 +73,45 @@ it("rejects malformed server output instead of presenting a successful empty pag
   mockRpc(null);
   await expect(listOwnHistory({})).rejects.toMatchObject({ code: "INVALID_INPUT" });
 });
+it("preserves selected public avatars while defaulting omitted keys and rejecting unknown values", async () => {
+  const { ownerSchema, summarySchema, parseRead } = await import("./read-contract");
+  const owner = { id: "00000000-0000-4000-8000-000000000001", displayName: "친구" };
+  expect(parseRead(ownerSchema, owner).avatarKey).toBe("lemon");
+  expect(parseRead(ownerSchema, { ...owner, avatarKey: "rabbit" }).avatarKey).toBe("rabbit");
+  expect(() => parseRead(ownerSchema, { ...owner, avatarKey: "unknown" })).toThrow();
+  const summary = {
+    count: 1,
+    reactions: { lemon: 0, clap: 1, heart: 0, cheer: 0 },
+    latestMessage: {
+      encouragementId: 1,
+      authorName: "친구",
+      authorAvatarKey: "bear",
+      message: "응원해",
+      createdAt: "2026-10-12T00:00:00Z",
+    },
+    myEncouragement: null,
+  };
+  expect(parseRead(summarySchema, summary).latestMessage?.authorAvatarKey).toBe("bear");
+  mockRpc({
+    items: [
+      {
+        id: 1,
+        type: "connection_accepted",
+        actorName: "친구",
+        actorAvatarKey: "dog",
+        createdAt: "2026-10-12T00:00:00Z",
+        readAt: null,
+        occurrenceId: null,
+        encouragementId: null,
+        connectionRequestId: null,
+        target: "/friends/",
+        availability: "available",
+        taskTitle: null,
+        messagePreview: null,
+        reaction: null,
+      },
+    ],
+    nextCursor: null,
+  });
+  expect((await listInbox({ filter: "all" })).items[0].actorAvatarKey).toBe("dog");
+});

@@ -6,17 +6,12 @@ vi.mock("@/features/auth/auth-provider", () => ({ useAuth: () => ({ demo: true, 
 vi.mock("@/components/layout/app-shell", () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
 }));
-it("keeps the actual detail through hiding, restoring and returning to a draft", async () => {
+it("keeps the received encouragement visible and preserves the editing draft", async () => {
   Element.prototype.scrollIntoView = vi.fn();
   render(<NotificationScreen />);
   fireEvent.click(await screen.findByRole("button", { name: /지민의 응원/ }));
   const dialog = await screen.findByRole("dialog");
-  fireEvent.click(await within(dialog).findByLabelText("지민 응원 메뉴"));
-  fireEvent.click(within(dialog).getByRole("button", { name: "숨기기" }));
-  const hidden = await within(dialog).findByText(/숨긴 응원/);
-  fireEvent.click(hidden);
-  fireEvent.click(within(dialog).getByLabelText("지민 응원 메뉴"));
-  fireEvent.click(within(dialog).getByRole("button", { name: "다시 표시" }));
+  expect(within(dialog).queryByRole("button", { name: "숨기기" })).not.toBeInTheDocument();
   await within(dialog).findByText("오늘도 잊지 않고 했네!");
   expect(screen.getByRole("dialog")).toBe(dialog);
   fireEvent.click(within(dialog).getByLabelText("할 일 메뉴"));

@@ -59,7 +59,7 @@ function history(title: string) {
   const detail = demoGetDetail(1);
   detail.occurrence.title_snapshot = title;
   detail.occurrence.owner_id = "account-a";
-  detail.owner = { id: "account-a", displayName: "A" };
+  detail.owner = { id: "account-a", displayName: "A", avatarKey: "lemon" };
   return {
     detail,
     result: {

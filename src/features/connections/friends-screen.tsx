@@ -7,6 +7,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { PageHeading } from "@/components/layout/page-heading";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
+import { ProfileAvatar } from "@/components/ui/profile-avatar";
 import { Panel } from "@/components/ui/panel";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useAuth } from "@/features/auth/auth-provider";
@@ -17,11 +18,9 @@ import { addUtcDays } from "@/features/tasks/recurrence";
 import { toDateKey } from "@/lib/time";
 import { AppError } from "@/lib/errors";
 import { OccurrenceDetailPanel } from "@/features/tasks/occurrence-detail-panel";
-import { EncouragementSummaryView, TaskRowView } from "@/features/tasks/task-row-view";
-import {
-  listEncouragementSummaries,
-  sendEncouragement,
-} from "@/features/encouragements/encouragement-service";
+import { TaskRowView } from "@/features/tasks/task-row-view";
+import { listEncouragementSummaries } from "@/features/encouragements/encouragement-service";
+import { EncouragementThread } from "@/features/encouragements/encouragement-thread";
 import {
   demoGetConnections,
   demoDisconnectFriend,
@@ -31,11 +30,9 @@ import {
   demoListSocial,
   demoListFriend,
   demoSummary,
-  demoSendEncouragement,
   subscribeDemoTasks,
 } from "@/features/tasks/demo-task-store";
 import {
-  blockFriend,
   cancelConnectionRequest,
   disconnectFriend,
   getConnectionData,
@@ -45,10 +42,36 @@ import {
   sendConnectionRequest,
   type ConnectionData,
 } from "./connection-service";
-import type { CompletionCursor, EncouragementSummary, SocialActivityItem } from "@/types/contracts";
+import type {
+  CompletionCursor,
+  EncouragementSummary,
+  SocialActivityItem,
+  OccurrenceDetail,
+} from "@/types/contracts";
 import type { TaskOccurrenceRow } from "@/lib/supabase/database.types";
 import styles from "./friends-experience.module.css";
 import { activityBoundary, needsOlderActivity } from "./activity-boundary";
+
+// Consume only our same-route entry before a new route is pushed. The shared promise
+// also prevents an account remount from starting a second traversal in the meantime.
+let pendingHistoryRetirement: Promise<void> | null = null;
+function retireFriendHistoryEntry() {
+  if (!pendingHistoryRetirement) {
+    pendingHistoryRetirement = new Promise<void>((resolve) => {
+      window.addEventListener(
+        "popstate",
+        (event) => {
+          event.stopImmediatePropagation();
+          pendingHistoryRetirement = null;
+          resolve();
+        },
+        { once: true, capture: true },
+      );
+      window.history.back();
+    });
+  }
+  return pendingHistoryRetirement;
+}
 
 const emptyConnections: ConnectionData = { friends: [], incoming: [], outgoing: [] };
 type View = "today" | "overdue" | "upcoming" | "history";
@@ -91,6 +114,8 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
   const [notice, setNotice] = useState("");
   const [activity, setActivity] = useState<SocialActivityItem[]>([]);
   const [cursor, setCursor] = useState<CompletionCursor | null>(null);
+  const [friendLimit, setFriendLimit] = useState(8);
+  const [requestLimit, setRequestLimit] = useState(10);
   const [selected, setSelected] = useState<string | null>(null);
   const selectedRef = useRef<string | null>(null);
   const [overview, setOverview] = useState<FriendView | null>(null);
@@ -123,7 +148,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
     }
     wasAdding.current = addOpen;
   }, [addOpen]);
-  const [confirm, setConfirm] = useState<"disconnect" | "block" | null>(null);
+  const [confirm, setConfirm] = useState<"disconnect" | null>(null);
   useEffect(() => {
     if (!confirm && wasConfirming.current) {
       queueMicrotask(() => (managementTrigger.current ?? addTrigger.current)?.focus());
@@ -158,11 +183,193 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
     returnFriendFocus.current = null;
   }, [selected]);
   const currentConnections = useRef(emptyConnections);
+  const [threadVersion, setThreadVersion] = useState(0);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const leaveAction = useRef<(() => void) | null>(null);
+  const dirtyThreads = useRef(new Map<number, string>());
+  const busyThreads = useRef(new Map<number, string>());
+  const guardedHistory = useRef(false);
+  const originalHistory = useRef<unknown>(null);
+  const guardUrl = useRef("");
+  const routing = useRef(false);
+
+  function adoptHistoryGuard() {
+    if (!window.history.state?.lemonFriendDraft) return false;
+    const base = { ...window.history.state };
+    delete base.lemonFriendDraft;
+    guardedHistory.current = true;
+    originalHistory.current = base;
+    guardUrl.current = window.location.href;
+    return true;
+  }
+  function ensureHistoryGuard() {
+    if (guardedHistory.current || adoptHistoryGuard()) return;
+    guardedHistory.current = true;
+    originalHistory.current = window.history.state;
+    guardUrl.current = window.location.href;
+    window.history.pushState(
+      { ...window.history.state, lemonFriendDraft: true },
+      "",
+      guardUrl.current,
+    );
+  }
+  async function continueLink(link: HTMLAnchorElement) {
+    if (routing.current) return;
+    routing.current = true;
+    const retire = guardedHistory.current && window.history.state?.lemonFriendDraft;
+    guardedHistory.current = false;
+    if (retire) await retireFriendHistoryEntry();
+    routing.current = false;
+    if (mounted.current) link.click();
+  }
+  function requestLeave(proceed: () => void) {
+    if (busyThreads.current.size || leaveAction.current) return false;
+    if (!dirtyThreads.current.size) return true;
+    leaveAction.current = proceed;
+    setDiscardOpen(true);
+    return false;
+  }
+  function cancelLeave() {
+    leaveAction.current = null;
+    setDiscardOpen(false);
+  }
+  function confirmLeave() {
+    if (busyThreads.current.size) return;
+    const proceed = leaveAction.current;
+    leaveAction.current = null;
+    dirtyThreads.current.clear();
+    setThreadVersion((value) => value + 1);
+    setDiscardOpen(false);
+    // Let the dialog restore focus and unmount before opening a new panel or route.
+    window.setTimeout(() => {
+      if (mounted.current) proceed?.();
+    }, 0);
+  }
+  useEffect(() => {
+    let active = true;
+    if (pendingHistoryRetirement)
+      void pendingHistoryRetirement.then(() => {
+        if (active) adoptHistoryGuard();
+      });
+    else adoptHistoryGuard();
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (dirtyThreads.current.size || busyThreads.current.size) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    const click = (event: MouseEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      )
+        return;
+      const link =
+        event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
+      if (!link || link.target === "_blank" || link.hasAttribute("download")) return;
+      const destination = new URL(link.href, window.location.href);
+      if (
+        destination.pathname === window.location.pathname &&
+        destination.search === window.location.search
+      )
+        return;
+      if (
+        !guardedHistory.current &&
+        !routing.current &&
+        !dirtyThreads.current.size &&
+        !busyThreads.current.size
+      )
+        return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (routing.current) return;
+      const proceed = () => {
+        void continueLink(link);
+      };
+      if (requestLeave(proceed)) proceed();
+    };
+    const back = (event: PopStateEvent) => {
+      if (pendingHistoryRetirement) return;
+      if (!guardedHistory.current || event.state?.lemonFriendDraft) return;
+      event.stopImmediatePropagation();
+      // Restore the same-route entry before asking, so cancellation never changes the route.
+      window.history.pushState(
+        { ...(originalHistory.current as object), lemonFriendDraft: true },
+        "",
+        guardUrl.current,
+      );
+      const proceed = () => {
+        guardedHistory.current = false;
+        window.history.go(-2);
+      };
+      if (requestLeave(proceed)) proceed();
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    document.addEventListener("click", click, true);
+    window.addEventListener("popstate", back, true);
+    return () => {
+      active = false;
+      window.removeEventListener("beforeunload", beforeUnload);
+      document.removeEventListener("click", click, true);
+      window.removeEventListener("popstate", back, true);
+      // Preserve marker ownership for a later mount; replaceState cannot remove an entry.
+    };
+  }, []);
+
+  function threadProps(id: number, ownerId: string, canCompose: boolean) {
+    return {
+      canCompose,
+      accessKey: `${ownerId}:${canCompose}:${threadVersion}`,
+      onDirtyChange: (dirty: boolean) => {
+        if (dirty) {
+          dirtyThreads.current.set(id, ownerId);
+          ensureHistoryGuard();
+        } else dirtyThreads.current.delete(id);
+      },
+      onBusyChange: (busy: boolean) => {
+        if (busy) {
+          busyThreads.current.set(id, ownerId);
+          ensureHistoryGuard();
+        } else busyThreads.current.delete(id);
+      },
+      onChanged: (fresh: OccurrenceDetail) => {
+        if (!currentConnections.current.friends.some((item) => item.id === ownerId)) return;
+        const update = (items: SocialActivityItem[]) =>
+          items.map((item) =>
+            item.occurrence.id === id
+              ? { ...item, occurrence: fresh.occurrence, summary: fresh.summary }
+              : item,
+          );
+        setActivity(update);
+        for (const [key, value] of cache.current) {
+          cache.current.set(key, {
+            ...value,
+            rows: value.rows.map((row) => (row.id === id ? fresh.occurrence : row)),
+            summaries: { ...value.summaries, [id]: fresh.summary },
+            history: update(value.history),
+          });
+        }
+        if (selectedRef.current) setOverview(cache.current.get(selectedRef.current) ?? null);
+      },
+    };
+  }
 
   const applyConnections = useCallback((next: ConnectionData) => {
     currentConnections.current = next;
     setData(next);
     const allowed = new Set(next.friends.map((friend) => friend.id));
+    for (const [id, owner] of dirtyThreads.current)
+      if (!allowed.has(owner)) dirtyThreads.current.delete(id);
+    for (const [id, owner] of busyThreads.current)
+      if (!allowed.has(owner)) busyThreads.current.delete(id);
+    if (!dirtyThreads.current.size && leaveAction.current) {
+      leaveAction.current = null;
+      setDiscardOpen(false);
+    }
     for (const id of cache.current.keys()) if (!allowed.has(id)) cache.current.delete(id);
     setActivity((items) => items.filter((item) => allowed.has(item.owner.id)));
     if (selectedRef.current && !allowed.has(selectedRef.current)) {
@@ -218,6 +425,17 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
         if (!mounted.current || token !== generation.current) return;
         const allowed = new Set(currentConnections.current.friends.map((friend) => friend.id));
         const items = page.items.filter((item) => allowed.has(item.owner.id));
+        if (!more && !selectedRef.current) {
+          const completed = new Set(
+            items
+              .filter((item) => item.occurrence.status === "completed")
+              .map((item) => item.occurrence.id),
+          );
+          for (const id of dirtyThreads.current.keys())
+            if (!completed.has(id)) dirtyThreads.current.delete(id);
+          for (const id of busyThreads.current.keys())
+            if (!completed.has(id)) busyThreads.current.delete(id);
+        }
         setActivity((old) =>
           more
             ? [
@@ -309,6 +527,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
   }
 
   async function openFriend(id: string) {
+    if (id !== selectedRef.current && !requestLeave(() => void openFriend(id))) return;
     const previous = cache.current.get(id);
     if (selectedRef.current === id && previous)
       cache.current.set(id, { ...previous, scroll: window.scrollY });
@@ -369,13 +588,22 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
         view: saved?.view ?? "today",
         scroll: saved?.scroll ?? 0,
       };
+      const completed = new Set(
+        [...value.rows, ...value.history.map((item) => item.occurrence)]
+          .filter((row) => row.status === "completed")
+          .map((row) => row.id),
+      );
+      for (const [occurrenceId, owner] of dirtyThreads.current)
+        if (owner === id && !completed.has(occurrenceId)) dirtyThreads.current.delete(occurrenceId);
+      for (const [occurrenceId, owner] of busyThreads.current)
+        if (owner === id && !completed.has(occurrenceId)) busyThreads.current.delete(occurrenceId);
       cache.current.set(id, value);
       setOverview(value);
       window.requestAnimationFrame(() => window.scrollTo({ top: value.scroll }));
     } catch (cause) {
       if (token === friendGeneration.current) {
         setFriendError(message(cause));
-        setOverview(null);
+        setOverview(cache.current.get(id) ?? null);
       }
     } finally {
       if (token === friendGeneration.current) setFriendLoading(false);
@@ -437,6 +665,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
   }, [addOpen, demo, userId]);
 
   function leaveFriend() {
+    if (!requestLeave(leaveFriend)) return;
     returnFriendFocus.current = selected;
     if (selected && overview) cache.current.set(selected, { ...overview, scroll: window.scrollY });
     friendGeneration.current++;
@@ -448,7 +677,8 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
     window.requestAnimationFrame(() => window.scrollTo({ top: activityScroll.current }));
   }
   function changeView(view: View) {
-    if (!overview || !selected) return;
+    if (!overview || !selected || overview.view === view || !requestLeave(() => changeView(view)))
+      return;
     const next = { ...overview, view };
     setOverview(next);
     cache.current.set(selected, next);
@@ -546,16 +776,10 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
   async function destroy() {
     if (!selected || !confirm) return;
     const id = selected;
-    const mode = confirm;
     await run(
       "destroy",
-      () =>
-        demo
-          ? demoDisconnectFriend(id, mode === "block")
-          : mode === "block"
-            ? blockFriend(id)
-            : disconnectFriend(id),
-      mode === "block" ? "차단했어요" : "연결을 해제했어요",
+      () => (demo ? demoDisconnectFriend(id) : disconnectFriend(id)),
+      "친구를 삭제했어요",
       () => {
         connectionGeneration.current++;
         generation.current++;
@@ -573,29 +797,8 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
       },
     );
   }
-  async function quickReaction(item: SocialActivityItem) {
-    const id = item.occurrence.id;
-    const success = await run(
-      `reaction-${id}`,
-      async () => {
-        const fresh = demo
-          ? demoListSocial(item.owner.id).find((row) => row.occurrence.id === id)?.summary
-          : (await listEncouragementSummaries({ occurrenceIds: [id] })).items.find(
-              (row) => row.occurrenceId === id,
-            )?.summary;
-        if (!mounted.current) return;
-        if (!fresh) throw new AppError("FORBIDDEN", "지금은 이 할 일에 응원할 수 없어요");
-        if (demo) demoSendEncouragement(id, "clap", fresh.myEncouragement?.message ?? "");
-        else await sendEncouragement(id, "clap", fresh.myEncouragement?.message ?? "");
-      },
-      "응원을 보냈어요",
-    );
-    if (success) {
-      void loadActivity();
-      if (selected) void openFriend(selected);
-    } else void refreshConnections().catch(() => {});
-  }
   function openDetail(id: number, ownerId: string) {
+    if (!requestLeave(() => openDetail(id, ownerId))) return;
     detailOwner.current = ownerId;
     setDetail(id);
   }
@@ -614,39 +817,41 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
     return (
       <article key={item.occurrence.id} className={styles.activity}>
         <div className={styles.activityMeta}>
-          <span>{item.owner.displayName}</span>
-          <time dateTime={item.occurrence.first_completed_at ?? undefined}>
-            {item.occurrence.first_completed_at
-              ? new Date(item.occurrence.first_completed_at).toLocaleDateString("ko-KR")
-              : item.occurrence.occurrence_date}{" "}
-            완료
-          </time>
+          <span aria-hidden="true">
+            <ProfileAvatar avatarKey={item.owner.avatarKey} size={36} />
+          </span>
+          <strong>{item.owner.displayName}</strong>
         </div>
         <button
           className={styles.activityOpen}
+          data-occurrence-trigger={item.occurrence.id}
           onClick={() => openDetail(item.occurrence.id, item.owner.id)}
         >
           <strong>{item.occurrence.title_snapshot}</strong>
-          <EncouragementSummaryView summary={item.summary} />
         </button>
-        <div className={styles.activityActions}>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={Boolean(pending)}
-            onClick={() => void quickReaction(item)}
-            aria-pressed={item.summary.myEncouragement?.reaction === "clap"}
-          >
-            박수{item.summary.reactions.clap ? ` ${item.summary.reactions.clap}` : ""}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => openDetail(item.occurrence.id, item.owner.id)}
-          >
-            {item.summary.myEncouragement ? "내 응원 수정" : "응원 쓰기"}
-          </Button>
-        </div>
+        <time
+          className={styles.completedAt}
+          dateTime={item.occurrence.first_completed_at ?? undefined}
+        >
+          {item.occurrence.first_completed_at
+            ? new Intl.DateTimeFormat("ko-KR", {
+                month: "long",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              }).format(new Date(item.occurrence.first_completed_at))
+            : item.occurrence.occurrence_date}{" "}
+          완료
+        </time>
+        <EncouragementThread
+          occurrenceId={item.occurrence.id}
+          summary={item.summary}
+          {...threadProps(
+            item.occurrence.id,
+            item.owner.id,
+            item.occurrence.status === "completed",
+          )}
+        />
       </article>
     );
   }
@@ -700,32 +905,47 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
       ) : null}
       {!selected ? (
         <>
-          <div className={styles.friendPicker} aria-label="친구 선택">
-            {data.friends.map((item) => (
-              <button
-                key={item.id}
-                ref={(node) => {
-                  if (node) friendTriggers.current.set(item.id, node);
-                  else friendTriggers.current.delete(item.id);
-                }}
-                onClick={() => void openFriend(item.id)}
-              >
-                <span className={styles.avatar} aria-hidden="true">
-                  {item.displayName.slice(0, 1)}
-                </span>
-                <span>{item.displayName}</span>
-              </button>
-            ))}
-          </div>
+          <section className={styles.friendSection} aria-labelledby="friend-picker-heading">
+            <h2 id="friend-picker-heading" className={styles.sectionTitle}>
+              친구 <span>{data.friends.length}</span>
+            </h2>
+            <div className={styles.friendPicker} aria-label="친구 선택">
+              {data.friends.slice(0, friendLimit).map((item) => (
+                <button
+                  key={item.id}
+                  ref={(node) => {
+                    if (node) friendTriggers.current.set(item.id, node);
+                    else friendTriggers.current.delete(item.id);
+                  }}
+                  onClick={() => void openFriend(item.id)}
+                >
+                  <span aria-hidden="true">
+                    <ProfileAvatar avatarKey={item.avatarKey} size={36} />
+                  </span>
+                  <span>{item.displayName}</span>
+                </button>
+              ))}
+            </div>
+            {data.friends.length > friendLimit ? (
+              <Button variant="ghost" onClick={() => setFriendLimit((count) => count + 8)}>
+                친구 더 보기
+              </Button>
+            ) : null}
+          </section>
           <section aria-labelledby="activity-heading">
             <h2 id="activity-heading" className={styles.sectionTitle}>
               최근 완료
             </h2>
+            {error && activity.length ? (
+              <p role="alert" className={styles.error}>
+                {error}
+              </p>
+            ) : null}
             {loading && !activity.length ? (
               <p role="status" className={styles.empty}>
                 불러오는 중
               </p>
-            ) : error ? (
+            ) : error && !activity.length ? (
               <div role="alert" className={styles.empty}>
                 <p>{error}</p>
                 <Button variant="secondary" onClick={() => void loadActivity()}>
@@ -779,17 +999,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
                       setConfirm("disconnect");
                     }}
                   >
-                    연결 해제
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setMenu(false);
-                      setActionError("");
-                      setConfirm("block");
-                    }}
-                  >
-                    차단
+                    친구 삭제
                   </Button>
                 </div>
               ) : null}
@@ -862,6 +1072,11 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
                         occurrence={row}
                         summary={overview.summaries[row.id]}
                         onOpen={() => openDetail(row.id, selected)}
+                        encouragementProps={threadProps(
+                          row.id,
+                          selected,
+                          row.status === "completed",
+                        )}
                       />
                     </div>
                   ))}
@@ -964,7 +1179,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
               받은 요청 <span>{data.incoming.length}</span>
             </h3>
             {data.incoming.length ? (
-              data.incoming.map((request) => (
+              data.incoming.slice(0, requestLimit).map((request) => (
                 <div
                   key={request.id}
                   className={`${styles.request} ${requestHighlight === request.id ? styles.highlight : ""}`}
@@ -1008,13 +1223,18 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
             ) : (
               <p>받은 요청이 없어요</p>
             )}
+            {data.incoming.length > requestLimit ? (
+              <Button variant="ghost" onClick={() => setRequestLimit((count) => count + 10)}>
+                받은 요청 더 보기
+              </Button>
+            ) : null}
           </section>
           <section>
             <h3 ref={outgoingHeading} tabIndex={-1}>
               보낸 요청 <span>{data.outgoing.length}</span>
             </h3>
             {data.outgoing.length ? (
-              data.outgoing.map((request) => (
+              data.outgoing.slice(0, requestLimit).map((request) => (
                 <div
                   key={request.id}
                   className={`${styles.request} ${requestHighlight === request.id ? styles.highlight : ""}`}
@@ -1044,18 +1264,28 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
             ) : (
               <p>보낸 요청이 없어요</p>
             )}
+            {data.outgoing.length > requestLimit ? (
+              <Button variant="ghost" onClick={() => setRequestLimit((count) => count + 10)}>
+                보낸 요청 더 보기
+              </Button>
+            ) : null}
           </section>
         </div>
       </Panel>
       <ConfirmDialog
+        open={discardOpen}
+        title="작성 중인 응원을 버릴까요?"
+        description="이동하면 작성 중인 내용이 사라져요"
+        confirmLabel="버리고 이동"
+        history={false}
+        onCancel={cancelLeave}
+        onConfirm={confirmLeave}
+      />
+      <ConfirmDialog
         open={Boolean(confirm)}
-        title={`${friend?.displayName ?? "친구"}님${confirm === "block" ? "을 차단할까요?" : "과 연결을 해제할까요?"}`}
-        description={
-          confirm === "block"
-            ? "서로의 할 일을 볼 수 없고, 새 연결 요청도 받지 않아요"
-            : "서로의 할 일을 볼 수 없어요. 다시 연결하려면 요청과 수락이 필요해요"
-        }
-        confirmLabel={confirm === "block" ? "차단하기" : "연결 해제하기"}
+        title={`${friend?.displayName ?? "친구"}님을 친구에서 삭제할까요?`}
+        description="서로의 할 일 공유가 끝나요. 다시 추가하려면 요청과 수락이 필요해요"
+        confirmLabel="친구 삭제하기"
         onCancel={() => {
           if (!pending) setConfirm(null);
         }}

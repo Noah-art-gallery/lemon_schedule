@@ -24,8 +24,15 @@ test("추가와 완료 후 재완료는 포인트를 다시 지급하지 않는�
   await panel.getByLabel("할 일", { exact: true }).fill("레몬 물 주기");
   await panel.getByRole("button", { name: "할 일 추가", exact: true }).click();
   await expect(panel).not.toBeVisible();
-  await page.getByRole("button", { name: "레몬 물 주기 완료", exact: true }).click();
-  await page.getByRole("button", { name: "레몬 물 주기 완료 취소", exact: true }).click();
+  const complete = page.getByRole("button", { name: "레몬 물 주기 완료", exact: true });
+  const order = await page.locator("[data-occurrence-trigger]").allTextContents();
+  await complete.focus();
+  await complete.press("Enter");
+  const undo = page.getByRole("button", { name: "레몬 물 주기 완료 취소", exact: true });
+  await expect(undo).toHaveText("완료됨");
+  await expect(undo).toBeFocused();
+  expect(await page.locator("[data-occurrence-trigger]").allTextContents()).toEqual(order);
+  await undo.click();
   await page.getByRole("button", { name: "레몬 물 주기 완료", exact: true }).click();
   await page.getByRole("link", { name: "펫", exact: true }).click();
   await expect(page.getByRole("heading", { name: "3 포인트" })).toBeVisible();
@@ -65,25 +72,73 @@ test("펫 그리기 패널을 닫으면 진입 버튼으로 돌아간다", async
   await expect(trigger).toBeFocused();
 });
 
-test("친구 완료 항목에서 응원글을 보내고 반응만 바꿔도 글을 유지한다", async ({ page }) => {
+test("카드 안 응원은 접어도 초안이 남고 명시적으로 전송한다", async ({ page }) => {
   await page.goto("/friends/");
-  await page.getByRole("button", { name: /수학 문제 5개 풀기/ }).click();
-  await page.getByRole("textbox", { name: "응원글" }).fill("끝까지 풀었네!");
-  await page.getByRole("button", { name: "응원 보내기" }).click();
-  await page.getByRole("button", { name: "박수", exact: true }).click();
-  await expect(page.getByRole("textbox", { name: "응원글" })).toHaveValue("끝까지 풀었네!");
+  const card = page.getByRole("article").filter({
+    has: page.getByRole("button", { name: "수학 문제 5개 풀기", exact: true }),
+  });
+  const preview = card.getByText("서연: 어려운 문제도 끝까지 풀었네", { exact: true });
+  await expect(preview).toBeVisible();
+  await card.getByRole("button", { name: "응원 남기기", exact: true }).click();
+  const composer = card.getByRole("region", { name: "응원 남기기", exact: true });
+  await composer.getByRole("textbox", { name: "응원글" }).fill("끝까지 풀었네!");
+  await composer.getByRole("button", { name: "박수", exact: true }).click();
+  await expect(preview).toBeVisible();
+  await card.getByRole("button", { name: /응원 \d+개 접기/ }).click();
+  await expect(composer).not.toBeVisible();
+  await expect(preview).toBeVisible();
+  await card.getByRole("button", { name: /응원 \d+개 펼치기/ }).click();
+  await expect(composer.getByRole("textbox", { name: "응원글" })).toHaveValue("끝까지 풀었네!");
+  await expect(composer.getByRole("button", { name: "박수", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await composer.getByRole("button", { name: "응원 보내기", exact: true }).click();
+  await composer.getByRole("button", { name: "레몬", exact: true }).click();
+  await expect(composer.getByRole("textbox", { name: "응원글" })).toHaveValue("끝까지 풀었네!");
+  await composer.getByRole("button", { name: "응원 수정", exact: true }).click();
+  await expect(card.getByText("나: 끝까지 풀었네!", { exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
-test("친구 차단 확인은 취소에 초점을 두고 관리 버튼으로 돌아온다", async ({ page }) => {
+test("친구 삭제 확인은 취소에 초점을 두고 관리 버튼으로 돌아온다", async ({ page }) => {
   await page.goto("/friends/");
   await page.getByRole("button", { name: "지민", exact: true }).click();
   const trigger = page.getByRole("button", { name: "친구 관리" });
   await trigger.click();
-  await page.getByRole("button", { name: "차단", exact: true }).click();
+  await page.getByRole("button", { name: "친구 삭제", exact: true }).click();
+  await expect(
+    page.getByText("서로의 할 일 공유가 끝나요. 다시 추가하려면 요청과 수락이 필요해요"),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "취소", exact: true })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(trigger).toBeFocused();
   await expect(page.getByRole("heading", { name: "지민", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /차단/ })).toHaveCount(0);
+});
+
+test("시간과 반복을 접어도 값이 남고 밀린 완료 행은 자리를 유지한다", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "할 일 추가", exact: true }).click();
+  const panel = page.getByRole("dialog", { name: "할 일 추가" });
+  await expect(panel.getByLabel("날짜", { exact: true })).toBeVisible();
+  await expect(panel.getByLabel("시간 (선택)")).not.toBeVisible();
+  await panel.getByRole("button", { name: "시간·반복 펼치기" }).click();
+  await panel.getByLabel("시간 (선택)").fill("18:30");
+  await panel.getByLabel("반복", { exact: true }).selectOption("weekly");
+  await panel.getByRole("button", { name: "시간·반복 접기" }).click();
+  await panel.getByRole("button", { name: "시간·반복 펼치기" }).click();
+  await expect(panel.getByLabel("시간 (선택)")).toHaveValue("18:30");
+  await expect(panel.getByLabel("반복", { exact: true })).toHaveValue("weekly");
+  await panel.getByRole("button", { name: "닫기", exact: true }).click();
+  await panel.getByRole("button", { name: "내용 버리기" }).click();
+  const complete = page.getByRole("button", { name: "도서관 책 반납 완료", exact: true });
+  await complete.focus();
+  await complete.press("Enter");
+  const undo = page.getByRole("button", { name: "도서관 책 반납 완료 취소", exact: true });
+  await expect(undo).toBeVisible();
+  await expect(undo).toBeFocused();
+  await expect(page.getByRole("heading", { name: /밀린 할 일/ })).toBeVisible();
 });
 
 test("데모의 주요 화면 진입에 hydration 오류가 없다", async ({ page }) => {

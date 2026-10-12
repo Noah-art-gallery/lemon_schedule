@@ -4,6 +4,7 @@ import type {
   NotificationType,
   OccurrenceStatus,
   Platform,
+  ProfileAvatarKey,
   Reaction,
   Recurrence,
 } from "@/types/contracts";
@@ -20,6 +21,7 @@ type DbTable<Row, Insert = Partial<Row>, Update = Partial<Insert>> = {
 export interface ProfileRow {
   id: string;
   display_name: string;
+  avatar_key: ProfileAvatarKey;
   created_at: string;
   updated_at: string;
 }
@@ -131,11 +133,6 @@ export type Database = {
       >;
       connection_requests: DbTable<ConnectionRequestRow>;
       connections: DbTable<ConnectionRow>;
-      blocks: DbTable<{
-        blocker_id: string;
-        blocked_id: string;
-        created_at: string;
-      }>;
       completion_events: DbTable<{
         id: number;
         occurrence_id: number;
@@ -218,12 +215,12 @@ export type Database = {
       };
       request_connection: { Args: { target_invite_code: string }; Returns: number };
       update_my_profile: {
-        Args: { new_display_name: string | null; new_time_zone: string | null };
+        Args: {
+          new_display_name: string | null;
+          new_time_zone: string | null;
+          new_avatar_key?: ProfileAvatarKey | null;
+        };
         Returns: Json;
-      };
-      list_blocked_profiles: {
-        Args: Record<string, never>;
-        Returns: Array<{ user_id: string; display_name: string; blocked_at: string }>;
       };
       respond_connection_request: {
         Args: { target_request_id: number; accept_request: boolean };
@@ -234,8 +231,6 @@ export type Database = {
         Returns: boolean;
       };
       disconnect_friend: { Args: { friend_id: string }; Returns: boolean };
-      block_user: { Args: { target_user_id: string }; Returns: boolean };
-      unblock_user: { Args: { target_user_id: string }; Returns: boolean };
       delete_task: { Args: { target_task_id: number }; Returns: boolean };
       update_task_schedule: {
         Args: {
@@ -277,10 +272,6 @@ export type Database = {
           selected_message: string | null;
         };
         Returns: number;
-      };
-      hide_encouragement: {
-        Args: { target_encouragement_id: number; hidden: boolean };
-        Returns: boolean;
       };
       delete_encouragement: {
         Args: { target_encouragement_id: number };

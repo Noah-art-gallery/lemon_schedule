@@ -37,6 +37,7 @@ function row(id: number, title: string): InboxItem {
     id,
     type: "encouragement_received",
     actorName: "친구",
+    actorAvatarKey: "lemon",
     createdAt: "2026-10-12T00:00:00Z",
     readAt: null,
     occurrenceId: 1,
