@@ -1,685 +1,1029 @@
 "use client";
 
-import { Check, Link2, UserPlus, UserRoundX, X } from "lucide-react";
+import { ArrowLeft, Copy, MoreHorizontal, UserPlus } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeading } from "@/components/layout/page-heading";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
-import { StatePanel } from "@/components/ui/state-panel";
+import { Panel } from "@/components/ui/panel";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useAuth } from "@/features/auth/auth-provider";
+import { InboxReadReceipt } from "@/features/notifications/inbox-read-receipt";
+import { getProfileDetails } from "@/features/profile/profile-service";
+import { listOccurrenceWindow } from "@/features/tasks/task-service";
+import { addUtcDays } from "@/features/tasks/recurrence";
+import { toDateKey } from "@/lib/time";
+import { AppError } from "@/lib/errors";
+import { OccurrenceDetailPanel } from "@/features/tasks/occurrence-detail-panel";
+import { EncouragementSummaryView, TaskRowView } from "@/features/tasks/task-row-view";
+import {
+  listEncouragementSummaries,
+  sendEncouragement,
+} from "@/features/encouragements/encouragement-service";
+import {
+  demoGetConnections,
+  demoDisconnectFriend,
+  demoRespondRequest,
+  demoCancelRequest,
+  demoRequestConnection,
+  demoListSocial,
+  demoListFriend,
+  demoSummary,
+  demoSendEncouragement,
+  subscribeDemoTasks,
+} from "@/features/tasks/demo-task-store";
 import {
   blockFriend,
   cancelConnectionRequest,
   disconnectFriend,
   getConnectionData,
-  getFriendOverview,
+  subscribeConnectionChanges,
+  listSocialActivity,
   respondToConnectionRequest,
   sendConnectionRequest,
   type ConnectionData,
 } from "./connection-service";
+import type { CompletionCursor, EncouragementSummary, SocialActivityItem } from "@/types/contracts";
 import type { TaskOccurrenceRow } from "@/lib/supabase/database.types";
-import {
-  deleteEncouragement,
-  listEncouragements,
-  sendEncouragement,
-  type EncouragementDisplay,
-  type Reaction,
-} from "@/features/encouragements/encouragement-service";
-import { friendWindow, groupFriendOccurrences } from "./friend-overview";
-import { listOccurrences } from "@/features/tasks/task-service";
+import styles from "./friends-experience.module.css";
 
-const demoData: ConnectionData = {
-  incoming: [],
-  outgoing: [],
-  friends: [
-    { id: "mom", displayName: "엄마" },
-    { id: "study-buddy", displayName: "공부 친구" },
-  ],
+const emptyConnections: ConnectionData = { friends: [], incoming: [], outgoing: [] };
+type View = "today" | "overdue" | "upcoming" | "history";
+type FriendView = {
+  today: string;
+  from: string;
+  to: string;
+  rows: TaskOccurrenceRow[];
+  summaries: Record<number, EncouragementSummary>;
+  history: SocialActivityItem[];
+  cursor: CompletionCursor | null;
+  view: View;
+  scroll: number;
 };
-
-function demoFriendOccurrence(
-  id: number,
-  date: string,
-  completed: boolean,
-  ownerId: string,
-  title: string,
-): TaskOccurrenceRow {
-  const timestamp = new Date().toISOString();
-  return {
-    id,
-    task_id: id,
-    owner_id: ownerId,
-    occurrence_date: date,
-    title_snapshot: title,
-    due_time: null,
-    recurrence_snapshot: "none",
-    status: completed ? "completed" : "pending",
-    completed_at: completed ? timestamp : null,
-    first_completed_at: completed ? timestamp : null,
-    reopened_at: null,
-    created_at: timestamp,
-    updated_at: timestamp,
-  };
-}
+const message = (error: unknown) =>
+  error instanceof Error ? error.message : "불러오지 못했어요. 다시 시도해 주세요";
+const positiveId = (value: string | null) =>
+  value && /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0
+    ? Number(value)
+    : null;
 
 export function FriendsScreen() {
-  const searchParams = useSearchParams();
   const { user, demo } = useAuth();
-  const [data, setData] = useState<ConnectionData>(
-    demo ? demoData : { incoming: [], outgoing: [], friends: [] },
+  return (
+    <FriendsContent
+      key={demo ? "demo" : (user?.id ?? "signed-out")}
+      demo={demo}
+      userId={user?.id}
+    />
   );
-  const [inviteCodeDraft, setInviteCode] = useState<string | null>(null);
-  const inviteCode = inviteCodeDraft ?? searchParams.get("invite")?.trim().toUpperCase() ?? "";
-  const [notice, setNotice] = useState("");
-  const [selected, setSelected] = useState<string | null>(null);
-  const [overview, setOverview] = useState<{
-    friendId: string;
-    occurrences: TaskOccurrenceRow[];
-    today: string;
-    todaySummary: {
-      completedCount: number;
-      scheduledCount: number;
-      percent: number | null;
-      empty: boolean;
-    };
-  } | null>(null);
-  const [highlightOccurrenceId, setHighlightOccurrenceId] = useState<number | null>(null);
-  const [encouragementTarget, setEncouragementTarget] = useState<number | null>(null);
-  const [encouragements, setEncouragements] = useState<EncouragementDisplay[]>([]);
-  const [reaction, setReaction] = useState<Reaction | "">("lemon");
-  const [encouragementMessage, setEncouragementMessage] = useState("");
-  const [sendingEncouragement, setSendingEncouragement] = useState(false);
-  const [rangePages, setRangePages] = useState({ past: 0, future: 0 });
-  const [loadingMore, setLoadingMore] = useState(false);
-  const overviewRequest = useRef(0);
-  const encouragementRequest = useRef(0);
-  const connectionRequest = useRef(0);
-  const deepLinkHandled = useRef("");
+}
 
-  const closeFriend = useCallback(() => {
-    overviewRequest.current += 1;
-    encouragementRequest.current += 1;
-    setSelected(null);
-    setOverview(null);
-    setHighlightOccurrenceId(null);
-    setEncouragementTarget(null);
-    setEncouragements([]);
-    setRangePages({ past: 0, future: 0 });
+function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
+  const params = useSearchParams();
+  const query = params.toString();
+  const notificationId = positiveId(params.get("notification"));
+  const [data, setData] = useState<ConnectionData>(emptyConnections);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [activity, setActivity] = useState<SocialActivityItem[]>([]);
+  const [cursor, setCursor] = useState<CompletionCursor | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const selectedRef = useRef<string | null>(null);
+  const [overview, setOverview] = useState<FriendView | null>(null);
+  const cache = useRef(new Map<string, FriendView>());
+  const [friendLoading, setFriendLoading] = useState(false);
+  const [friendError, setFriendError] = useState("");
+  const [detail, setDetail] = useState<number | null>(null);
+  const detailOwner = useRef<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const [ownCode, setOwnCode] = useState(demo ? "LEMON0001" : "");
+  const [menu, setMenu] = useState(false);
+  const [confirm, setConfirm] = useState<"disconnect" | "block" | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
+  const mutation = useRef(false);
+  const [actionError, setActionError] = useState("");
+  const [unavailable, setUnavailable] = useState(false);
+  const [requestHighlight, setRequestHighlight] = useState<number | null>(null);
+  const generation = useRef(0);
+  const connectionGeneration = useRef(0);
+  const friendGeneration = useRef(0);
+  const mounted = useRef(true);
+  const handledQuery = useRef("");
+  const activityScroll = useRef(0);
+  const activityCount = useRef(0);
+  const currentConnections = useRef(emptyConnections);
+
+  const applyConnections = useCallback((next: ConnectionData) => {
+    currentConnections.current = next;
+    setData(next);
+    const allowed = new Set(next.friends.map((friend) => friend.id));
+    for (const id of cache.current.keys()) if (!allowed.has(id)) cache.current.delete(id);
+    setActivity((items) => items.filter((item) => allowed.has(item.owner.id)));
+    if (selectedRef.current && !allowed.has(selectedRef.current)) {
+      friendGeneration.current++;
+      selectedRef.current = null;
+      setSelected(null);
+      setOverview(null);
+      setConfirm(null);
+      setMenu(false);
+      setNotice("연결이 해제되어 더 이상 할 일을 볼 수 없어요");
+    }
+    if (detailOwner.current && !allowed.has(detailOwner.current)) {
+      detailOwner.current = null;
+      setDetail(null);
+    }
   }, []);
 
-  const load = useCallback(async () => {
-    if (demo || !user) return;
-    const request = ++connectionRequest.current;
-    try {
-      const result = await getConnectionData(user.id);
-      if (request !== connectionRequest.current) return;
-      setData(result);
-      if (selected && !result.friends.some((item) => item.id === selected)) closeFriend();
-    } catch (cause) {
-      if (request !== connectionRequest.current) return;
-      setData({ incoming: [], outgoing: [], friends: [] });
-      closeFriend();
-      setNotice(cause instanceof Error ? cause.message : "친구 연결을 불러오지 못했어요.");
-    }
-  }, [closeFriend, demo, selected, user]);
+  const refreshConnections = useCallback(async () => {
+    if (!mounted.current) return emptyConnections;
+    const token = ++connectionGeneration.current;
+    const next = demo
+      ? demoGetConnections()
+      : userId
+        ? await getConnectionData(userId)
+        : emptyConnections;
+    if (mounted.current && token === connectionGeneration.current) applyConnections(next);
+    return token === connectionGeneration.current ? next : currentConnections.current;
+  }, [applyConnections, demo, userId]);
+
+  const loadActivity = useCallback(
+    async (more?: CompletionCursor) => {
+      if (!mounted.current || (!demo && !userId)) {
+        setLoading(false);
+        return;
+      }
+      const token = ++generation.current;
+      if (!more) setLoading(true);
+      setError("");
+      try {
+        await refreshConnections();
+        const page = demo
+          ? { items: demoListSocial(), nextCursor: null }
+          : await listSocialActivity(more ? { cursor: more } : {});
+        if (!more && !demo) {
+          while (page.nextCursor && page.items.length < activityCount.current) {
+            const extra = await listSocialActivity({ cursor: page.nextCursor });
+            page.items.push(...extra.items);
+            page.nextCursor = extra.nextCursor;
+          }
+        }
+        if (!mounted.current || token !== generation.current) return;
+        const allowed = new Set(currentConnections.current.friends.map((friend) => friend.id));
+        const items = page.items.filter((item) => allowed.has(item.owner.id));
+        setActivity((old) =>
+          more
+            ? [
+                ...old,
+                ...items.filter(
+                  (item) => !old.some((previous) => previous.occurrence.id === item.occurrence.id),
+                ),
+              ]
+            : items,
+        );
+        activityCount.current = more ? activityCount.current + items.length : items.length;
+        setCursor(page.nextCursor);
+      } catch (cause) {
+        if (token === generation.current) setError(message(cause));
+      } finally {
+        if (token === generation.current) setLoading(false);
+      }
+    },
+    [demo, userId, refreshConnections],
+  );
+
   useEffect(() => {
-    if (demo || !user) return;
-    const refresh = () => void load();
-    const initial = window.setTimeout(refresh, 0);
-    const refreshWhenVisible = () => {
+    mounted.current = true;
+    const activityGeneration = generation,
+      connectionsGeneration = connectionGeneration,
+      selectedGeneration = friendGeneration;
+    const initial = window.setTimeout(() => void loadActivity(), 0);
+    const refresh = () => {
+      void refreshConnections().catch(() => {});
+    };
+    const visible = () => {
       if (document.visibilityState === "visible") refresh();
     };
     window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-    const interval = window.setInterval(refresh, 15000);
+    document.addEventListener("visibilitychange", visible);
+    const timer = window.setInterval(refresh, 15000);
+    const unsubscribe = demo
+      ? subscribeDemoTasks(refresh)
+      : userId
+        ? subscribeConnectionChanges(userId, (event) => {
+            if (!mounted.current) return;
+            if (event.kind === "connection" && event.change === "DELETE") {
+              const current = currentConnections.current;
+              const removed = current.friends.find(
+                (friend) =>
+                  (event.friendId !== undefined && friend.id === event.friendId) ||
+                  (event.connectionId !== undefined && friend.connectionId === event.connectionId),
+              );
+              if (removed) {
+                generation.current++;
+                connectionGeneration.current++;
+                applyConnections({
+                  ...current,
+                  friends: current.friends.filter((friend) => friend.id !== removed.id),
+                });
+              }
+            }
+            // Additions and unrelated changes must preserve the active task and unsent text.
+            // An unidentified DELETE is resolved by the authorized connection query.
+            if (event.kind === "connection" && event.change === "INSERT") void loadActivity();
+            else refresh();
+          })
+        : () => {};
     return () => {
-      connectionRequest.current += 1;
+      mounted.current = false;
+      activityGeneration.current++;
+      connectionsGeneration.current++;
+      selectedGeneration.current++;
       window.clearTimeout(initial);
+      window.clearInterval(timer);
+      unsubscribe();
       window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
-      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", visible);
     };
-  }, [demo, load, user]);
+  }, [demo, userId, applyConnections, loadActivity, refreshConnections]);
+
+  async function summaries(rows: TaskOccurrenceRow[]) {
+    if (demo) return Object.fromEntries(rows.map((row) => [row.id, demoSummary(row.id)]));
+    const result: Record<number, EncouragementSummary> = {};
+    for (let offset = 0; offset < rows.length; offset += 100) {
+      const page = await listEncouragementSummaries({
+        occurrenceIds: rows.slice(offset, offset + 100).map((row) => row.id),
+      });
+      page.items.forEach((item) => {
+        result[item.occurrenceId] = item.summary;
+      });
+    }
+    return result;
+  }
+
+  async function openFriend(id: string) {
+    const previous = cache.current.get(id);
+    if (selectedRef.current === id && previous)
+      cache.current.set(id, { ...previous, scroll: window.scrollY });
+    const token = ++friendGeneration.current;
+    if (!selectedRef.current) activityScroll.current = window.scrollY;
+    selectedRef.current = id;
+    setSelected(id);
+    setOverview(cache.current.get(id) ?? null);
+    setFriendLoading(true);
+    setFriendError("");
+    setMenu(false);
+    try {
+      const next = await refreshConnections();
+      if (!next.friends.some((friend) => friend.id === id))
+        throw new AppError("FORBIDDEN", "친구 연결이 해제되었어요");
+      const saved = cache.current.get(id);
+      const date = saved?.today ?? toDateKey(new Date(), "UTC");
+      let result = demo
+        ? { today: toDateKey(new Date(), "Asia/Seoul"), occurrences: demoListFriend(id) }
+        : await listOccurrenceWindow({
+            ownerId: id,
+            from: saved?.from ?? addUtcDays(date, -30),
+            to: saved?.to ?? addUtcDays(date, 30),
+          });
+      if (!saved && result.today !== date && !demo)
+        result = await listOccurrenceWindow({
+          ownerId: id,
+          from: addUtcDays(result.today, -30),
+          to: addUtcDays(result.today, 30),
+        });
+      const history = demo
+        ? { items: demoListSocial(id), nextCursor: null }
+        : await listSocialActivity({ friendId: id });
+      if (!demo && saved) {
+        while (history.nextCursor && history.items.length < saved.history.length) {
+          const extra = await listSocialActivity({ friendId: id, cursor: history.nextCursor });
+          history.items.push(...extra.items);
+          history.nextCursor = extra.nextCursor;
+        }
+      }
+      const summary = await summaries(result.occurrences);
+      if (
+        token !== friendGeneration.current ||
+        !mounted.current ||
+        !currentConnections.current.friends.some((friend) => friend.id === id)
+      )
+        return;
+      const value: FriendView = {
+        today: result.today,
+        from: saved?.from ?? addUtcDays(result.today, -30),
+        to: saved?.to ?? addUtcDays(result.today, 30),
+        rows: result.occurrences,
+        summaries: summary,
+        history: history.items,
+        cursor: history.nextCursor,
+        view: saved?.view ?? "today",
+        scroll: saved?.scroll ?? 0,
+      };
+      cache.current.set(id, value);
+      setOverview(value);
+      window.requestAnimationFrame(() => window.scrollTo({ top: value.scroll }));
+    } catch (cause) {
+      if (token === friendGeneration.current) {
+        setFriendError(message(cause));
+        setOverview(null);
+      }
+    } finally {
+      if (token === friendGeneration.current) setFriendLoading(false);
+    }
+  }
 
   useEffect(() => {
-    if (demo) return;
-    const friendId = searchParams.get("friend");
-    const targetId = Number(searchParams.get("occurrence"));
-    if (!friendId || !data.friends.some((item) => item.id === friendId)) return;
-    const deepLinkKey = `${friendId}:${targetId}`;
-    if (deepLinkHandled.current === deepLinkKey) return;
-    deepLinkHandled.current = deepLinkKey;
-    const request = ++overviewRequest.current;
-    encouragementRequest.current += 1;
-    setSelected(friendId);
-    setOverview(null);
-    setEncouragementTarget(null);
+    if (loading || error || handledQuery.current === query) return;
     let active = true;
-    void getFriendOverview(
-      friendId,
-      Number.isSafeInteger(targetId) && targetId > 0 ? targetId : undefined,
-    )
-      .then((result) => {
-        if (active && request === overviewRequest.current) {
-          setOverview({ ...result, friendId });
-          setHighlightOccurrenceId(
-            Number.isSafeInteger(targetId) && targetId > 0 ? targetId : null,
-          );
-          setRangePages({ past: 0, future: 0 });
+    queueMicrotask(() => {
+      if (!active) return;
+      handledQuery.current = query;
+      const target = new URLSearchParams(query);
+      const friend = target.get("friend");
+      const request = positiveId(target.get("request"));
+      const occurrence = positiveId(target.get("occurrence"));
+      if (target.has("request")) {
+        setAddOpen(true);
+        setRequestHighlight(request);
+        setUnavailable(
+          !request || ![...data.incoming, ...data.outgoing].some((item) => item.id === request),
+        );
+      } else if (friend) {
+        if (!data.friends.some((item) => item.id === friend)) {
+          setUnavailable(true);
+          return;
         }
+        void openFriend(friend);
+        if (occurrence) {
+          detailOwner.current = friend;
+          setDetail(occurrence);
+        } else if (target.has("occurrence")) setUnavailable(true);
+      }
+      if (target.has("invite")) {
+        setCode(target.get("invite") ?? "");
+        setAddOpen(true);
+      }
+    });
+    return () => {
+      active = false;
+    };
+    // Handle a URL once; connection refresh must not reopen a dismissed panel.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, loading, error, data]);
+
+  useEffect(() => {
+    if (!addOpen || demo || !userId) return;
+    let active = true;
+    void getProfileDetails(userId)
+      .then((profile) => {
+        if (active) setOwnCode(profile.inviteCode);
       })
-      .catch((cause: unknown) => {
-        if (active && request === overviewRequest.current) {
-          closeFriend();
-          setNotice(cause instanceof Error ? cause.message : "친구 할 일을 불러오지 못했어요.");
-        }
+      .catch((cause) => {
+        if (active) setActionError(message(cause));
       });
     return () => {
       active = false;
     };
-  }, [closeFriend, data.friends, demo, searchParams]);
+  }, [addOpen, demo, userId]);
 
-  useEffect(() => {
-    if (!highlightOccurrenceId || !overview) return;
-    document
-      .getElementById(`friend-task-${highlightOccurrenceId}`)
-      ?.scrollIntoView({ block: "center" });
-  }, [highlightOccurrenceId, overview]);
-
-  async function send() {
-    if (!inviteCode.trim()) return;
-    try {
-      if (!demo) await sendConnectionRequest(inviteCode.trim());
-      setNotice("연결 요청을 보냈어요. 상대가 수락하면 서로의 할 일을 볼 수 있어요.");
-      setInviteCode("");
-      await load();
-    } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : "연결 요청을 보내지 못했어요.");
-    }
-  }
-
-  async function respond(requestId: number, accept: boolean) {
-    try {
-      if (!demo) await respondToConnectionRequest(requestId, accept);
-      setNotice(accept ? "친구 연결을 수락했어요." : "연결 요청을 거절했어요.");
-      await load();
-    } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : "요청을 처리하지 못했어요.");
-    }
-  }
-
-  async function openFriend(friendId: string) {
-    const request = ++overviewRequest.current;
-    encouragementRequest.current += 1;
-    setSelected(friendId);
+  function leaveFriend() {
+    if (selected && overview) cache.current.set(selected, { ...overview, scroll: window.scrollY });
+    friendGeneration.current++;
+    selectedRef.current = null;
+    setSelected(null);
     setOverview(null);
-    setHighlightOccurrenceId(null);
-    setEncouragementTarget(null);
-    setEncouragements([]);
-    setRangePages({ past: 0, future: 0 });
-    if (demo) {
-      const today = new Date().toISOString().slice(0, 10);
-      const mom = friendId === "mom";
-      setOverview({
-        friendId,
-        occurrences: [
-          demoFriendOccurrence(
-            mom ? 801 : 803,
-            today,
-            true,
-            friendId,
-            mom ? "아침 산책" : "함께 공부하기",
-          ),
-          demoFriendOccurrence(
-            mom ? 802 : 804,
-            today,
-            false,
-            friendId,
-            mom ? "책 읽기" : "물 마시기",
-          ),
-        ],
-        today,
-        todaySummary: { completedCount: 1, scheduledCount: 2, percent: 50, empty: false },
-      });
-      return;
-    }
-    if (!user) return;
+    setMenu(false);
+    setFriendError("");
+    window.requestAnimationFrame(() => window.scrollTo({ top: activityScroll.current }));
+  }
+  function changeView(view: View) {
+    if (!overview || !selected) return;
+    const next = { ...overview, view };
+    setOverview(next);
+    cache.current.set(selected, next);
+  }
+  async function moreFriend() {
+    if (!selected || !overview || mutation.current) return;
+    mutation.current = true;
+    setPending("more");
+    setFriendError("");
+    const token = friendGeneration.current;
+    const id = selected;
+    const old = overview;
     try {
-      const result = await getFriendOverview(friendId);
-      if (request === overviewRequest.current) setOverview({ ...result, friendId });
-    } catch (cause) {
-      if (request === overviewRequest.current) {
-        closeFriend();
-        setNotice(cause instanceof Error ? cause.message : "친구 할 일을 불러오지 못했어요.");
-      }
-    }
-  }
-
-  async function removeFriend(friendId: string) {
-    if (!window.confirm("연결을 해제할까요? 과거 기록은 친구에게 보이지 않게 돼요.")) return;
-    if (!demo) await disconnectFriend(friendId);
-    closeFriend();
-    await load();
-  }
-
-  async function block(friendId: string) {
-    if (!demo) await blockFriend(friendId);
-    closeFriend();
-    setNotice("차단했어요. 연결과 대기 요청이 모두 종료돼요.");
-    await load();
-  }
-
-  async function encourage(occurrenceId: number) {
-    const overview = overviewRequest.current;
-    const request = ++encouragementRequest.current;
-    setEncouragementTarget(occurrenceId);
-    setEncouragements([]);
-    if (demo) {
-      setEncouragements([]);
-      return;
-    }
-    try {
-      const records = await listEncouragements(occurrenceId);
-      if (overview !== overviewRequest.current || request !== encouragementRequest.current) return;
-      setEncouragements(records);
-      const mine = records.find((item) => item.author_id === user?.id);
-      setReaction((mine?.reaction as Reaction | null) ?? (mine ? "" : "lemon"));
-      setEncouragementMessage(mine?.message ?? "");
-    } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : "응원을 불러오지 못했어요.");
-    }
-  }
-
-  async function saveEncouragement() {
-    if (!encouragementTarget) return;
-    const overview = overviewRequest.current;
-    const request = encouragementRequest.current;
-    if (demo) {
-      setNotice("미리보기에서는 응원이 저장되지 않아요.");
-      return;
-    }
-    setSendingEncouragement(true);
-    try {
-      await sendEncouragement(encouragementTarget, reaction || null, encouragementMessage);
-      const records = await listEncouragements(encouragementTarget);
-      if (overview !== overviewRequest.current || request !== encouragementRequest.current) return;
-      setEncouragements(records);
-      setNotice("응원을 보냈어요!");
-    } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : "응원을 보내지 못했어요.");
-    } finally {
-      setSendingEncouragement(false);
-    }
-  }
-
-  async function removeMyEncouragement(encouragementId: number) {
-    if (demo || !encouragementTarget) return;
-    const overview = overviewRequest.current;
-    const request = encouragementRequest.current;
-    try {
-      await deleteEncouragement(encouragementId);
-      const records = await listEncouragements(encouragementTarget);
-      if (overview !== overviewRequest.current || request !== encouragementRequest.current) return;
-      setEncouragements(records);
-      setReaction("lemon");
-      setEncouragementMessage("");
-      setNotice("내 응원을 삭제했어요.");
-    } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : "응원을 삭제하지 못했어요.");
-    }
-  }
-
-  async function loadMore(direction: "past" | "future") {
-    if (!selected || !overview || loadingMore) return;
-    const request = overviewRequest.current;
-    if (demo) {
-      setNotice("미리보기에서는 추가 기록이 없어요.");
-      return;
-    }
-    const page = rangePages[direction] + 1;
-    const { from, to } = friendWindow(overview.today, direction, page);
-    setLoadingMore(true);
-    try {
-      const extra = await listOccurrences({ ownerId: selected, from, to });
-      if (request !== overviewRequest.current) return;
-      setOverview((current) => {
-        if (!current) return current;
-        const known = new Set(current.occurrences.map((item) => item.id));
-        return {
-          ...current,
-          occurrences: [
-            ...current.occurrences,
-            ...extra.occurrences.filter((item) => !known.has(item.id)),
+      let next: FriendView;
+      if (old.view === "history") {
+        if (!old.cursor) return;
+        const result = await listSocialActivity({ friendId: id, cursor: old.cursor });
+        next = {
+          ...old,
+          history: [
+            ...old.history,
+            ...result.items.filter(
+              (item) =>
+                !old.history.some((previous) => previous.occurrence.id === item.occurrence.id),
+            ),
           ],
+          cursor: result.nextCursor,
         };
-      });
-      setRangePages((current) => ({ ...current, [direction]: page }));
-      if (!extra.occurrences.length) setNotice("이 기간에는 추가 할 일이 없어요.");
+      } else {
+        const future = old.view === "upcoming";
+        const from = future ? addUtcDays(old.to, 1) : addUtcDays(old.from, -366);
+        const to = future ? addUtcDays(old.to, 366) : addUtcDays(old.from, -1);
+        const result = demo
+          ? { occurrences: demoListFriend(id), today: old.today }
+          : await listOccurrenceWindow({ ownerId: id, from, to });
+        const summary = await summaries(result.occurrences);
+        next = {
+          ...old,
+          from: future ? old.from : from,
+          to: future ? to : old.to,
+          rows: [
+            ...old.rows,
+            ...result.occurrences.filter((item) => !old.rows.some((row) => row.id === item.id)),
+          ],
+          summaries: { ...old.summaries, ...summary },
+        };
+      }
+      if (
+        token !== friendGeneration.current ||
+        !currentConnections.current.friends.some((friend) => friend.id === id)
+      )
+        return;
+      setOverview(next);
+      cache.current.set(id, next);
     } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : "추가 할 일을 불러오지 못했어요.");
+      if (token === friendGeneration.current) setFriendError(message(cause));
     } finally {
-      setLoadingMore(false);
+      mutation.current = false;
+      setPending(null);
     }
   }
-
+  async function run(
+    key: string,
+    action: () => Promise<unknown> | void,
+    success: string,
+    onSuccess?: () => void,
+  ) {
+    if (mutation.current) return false;
+    mutation.current = true;
+    setPending(key);
+    setActionError("");
+    setNotice("");
+    try {
+      await action();
+      if (!mounted.current) return false;
+      onSuccess?.();
+      setNotice(success);
+      try {
+        await refreshConnections();
+      } catch (cause) {
+        if (mounted.current)
+          setActionError(`변경은 완료했지만 목록을 새로 불러오지 못했어요: ${message(cause)}`);
+      }
+      return mounted.current;
+    } catch (cause) {
+      if (mounted.current) setActionError(message(cause));
+      return false;
+    } finally {
+      mutation.current = false;
+      setPending(null);
+    }
+  }
+  async function destroy() {
+    if (!selected || !confirm) return;
+    const id = selected;
+    const mode = confirm;
+    await run(
+      "destroy",
+      () =>
+        demo
+          ? demoDisconnectFriend(id, mode === "block")
+          : mode === "block"
+            ? blockFriend(id)
+            : disconnectFriend(id),
+      mode === "block" ? "차단했어요" : "연결을 해제했어요",
+      () => {
+        connectionGeneration.current++;
+        generation.current++;
+        const current = currentConnections.current;
+        applyConnections({
+          ...current,
+          friends: current.friends.filter((friend) => friend.id !== id),
+          incoming: current.incoming.filter((request) => request.requester_id !== id),
+          outgoing: current.outgoing.filter((request) => request.addressee_id !== id),
+        });
+        cache.current.delete(id);
+        setConfirm(null);
+        setDetail(null);
+        detailOwner.current = null;
+      },
+    );
+  }
+  async function quickReaction(item: SocialActivityItem) {
+    const id = item.occurrence.id;
+    const success = await run(
+      `reaction-${id}`,
+      async () => {
+        const fresh = demo
+          ? demoListSocial(item.owner.id).find((row) => row.occurrence.id === id)?.summary
+          : (await listEncouragementSummaries({ occurrenceIds: [id] })).items.find(
+              (row) => row.occurrenceId === id,
+            )?.summary;
+        if (!mounted.current) return;
+        if (!fresh) throw new AppError("FORBIDDEN", "지금은 이 할 일에 응원할 수 없어요");
+        if (demo) demoSendEncouragement(id, "clap", fresh.myEncouragement?.message ?? "");
+        else await sendEncouragement(id, "clap", fresh.myEncouragement?.message ?? "");
+      },
+      "응원을 보냈어요",
+    );
+    if (success) {
+      void loadActivity();
+      if (selected) void openFriend(selected);
+    } else void refreshConnections().catch(() => {});
+  }
+  function openDetail(id: number, ownerId: string) {
+    detailOwner.current = ownerId;
+    setDetail(id);
+  }
+  const friend = data.friends.find((item) => item.id === selected);
+  const rows =
+    overview?.rows
+      .filter((row) =>
+        overview.view === "today"
+          ? row.occurrence_date === overview.today
+          : overview.view === "overdue"
+            ? row.occurrence_date < overview.today && row.status === "pending"
+            : row.occurrence_date > overview.today,
+      )
+      .sort((a, b) => a.occurrence_date.localeCompare(b.occurrence_date) || a.id - b.id) ?? [];
+  function activityCard(item: SocialActivityItem) {
+    return (
+      <article key={item.occurrence.id} className={styles.activity}>
+        <div className={styles.activityMeta}>
+          <span>{item.owner.displayName}</span>
+          <time dateTime={item.occurrence.first_completed_at ?? undefined}>
+            {item.occurrence.first_completed_at
+              ? new Date(item.occurrence.first_completed_at).toLocaleDateString("ko-KR")
+              : item.occurrence.occurrence_date}{" "}
+            완료
+          </time>
+        </div>
+        <button
+          className={styles.activityOpen}
+          onClick={() => openDetail(item.occurrence.id, item.owner.id)}
+        >
+          <strong>{item.occurrence.title_snapshot}</strong>
+          <EncouragementSummaryView summary={item.summary} />
+        </button>
+        <div className={styles.activityActions}>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={Boolean(pending)}
+            onClick={() => void quickReaction(item)}
+            aria-pressed={item.summary.myEncouragement?.reaction === "clap"}
+          >
+            박수{item.summary.reactions.clap ? ` ${item.summary.reactions.clap}` : ""}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => openDetail(item.occurrence.id, item.owner.id)}
+          >
+            {item.summary.myEncouragement ? "내 응원 수정" : "응원 쓰기"}
+          </Button>
+        </div>
+      </article>
+    );
+  }
   return (
     <AppShell>
       <PageHeading
-        eyebrow="TOGETHER"
-        title="친구와 같이 해볼까요?"
-        description="서로 연결되면 할 일을 확인하고 완료한 순간에 응원을 보낼 수 있어요."
+        title="친구"
+        action={
+          <Button
+            onClick={() => {
+              setActionError("");
+              setUnavailable(false);
+              setAddOpen(true);
+            }}
+          >
+            <UserPlus size={18} />
+            친구 추가
+          </Button>
+        }
       />
       {notice ? (
-        <p className="inline-alert" role="status">
+        <p role="status" className={styles.notice}>
           {notice}
         </p>
       ) : null}
-      <Card as="section" className="invite-form-card">
-        <div>
-          <p className="eyebrow">CONNECT</p>
-          <h2>초대 코드로 연결하기</h2>
-          <p>내 정보에서 코드를 복사해 공유할 수도 있어요.</p>
-        </div>
-        <div className="invite-form">
-          <Field
-            name="inviteCode"
-            label="친구 초대 코드"
-            value={inviteCode}
-            onChange={(event) => setInviteCode(event.target.value.toUpperCase())}
-            placeholder="LEMON0001"
-          />
-          <Button onClick={() => void send()}>
-            <UserPlus size={17} aria-hidden="true" /> 요청 보내기
+      {!addOpen && !confirm && actionError ? (
+        <p role="alert" className={styles.error}>
+          {actionError}
+        </p>
+      ) : null}
+      {unavailable && !addOpen ? (
+        <div role="alert" className={styles.empty}>
+          <p>더 이상 볼 수 없는 친구 소식이에요</p>
+          <Button variant="secondary" onClick={() => setUnavailable(false)}>
+            친구 화면으로
           </Button>
         </div>
-      </Card>
-
-      {data.incoming.length > 0 ? (
-        <section className="connection-section">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">REQUESTS</p>
-              <h2>받은 요청</h2>
-            </div>
-          </div>
-          <div className="connection-list">
-            {data.incoming.map((request) => (
-              <Card as="article" className="connection-card" key={request.id}>
-                <div className="profile-avatar">{request.displayName.slice(0, 1)}</div>
-                <div>
-                  <h3>{request.displayName}</h3>
-                  <p>내 할 일을 함께 보고 싶어 해요.</p>
-                </div>
-                <div className="button-row">
-                  <Button size="sm" onClick={() => void respond(request.id, true)}>
-                    <Check size={15} aria-hidden="true" /> 수락
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => void respond(request.id, false)}>
-                    <X size={15} aria-hidden="true" /> 거절
-                  </Button>
-                </div>
-              </Card>
+      ) : null}
+      {data.incoming.length ? (
+        <button
+          className={styles.requestEntry}
+          onClick={() => {
+            setAddOpen(true);
+            setUnavailable(false);
+          }}
+        >
+          받은 요청 <strong>{data.incoming.length}</strong>
+          <span>확인하기</span>
+        </button>
+      ) : null}
+      {!selected ? (
+        <>
+          <div className={styles.friendPicker} aria-label="친구 선택">
+            {data.friends.map((item) => (
+              <button key={item.id} onClick={() => void openFriend(item.id)}>
+                <span className={styles.avatar} aria-hidden="true">
+                  {item.displayName.slice(0, 1)}
+                </span>
+                <span>{item.displayName}</span>
+              </button>
             ))}
           </div>
-        </section>
-      ) : null}
-
-      {data.outgoing.length > 0 ? (
-        <section className="connection-section">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">PENDING</p>
-              <h2>보낸 요청</h2>
-            </div>
-          </div>
-          <div className="connection-list">
-            {data.outgoing.map((request) => (
-              <Card as="article" className="connection-card" key={request.id}>
-                <div className="profile-avatar">{request.displayName.slice(0, 1)}</div>
-                <div>
-                  <h3>{request.displayName}</h3>
-                  <p>수락을 기다리는 중이에요.</p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={async () => {
-                    if (!demo) await cancelConnectionRequest(request.id);
-                    await load();
-                  }}
-                >
-                  취소
+          <section aria-labelledby="activity-heading">
+            <h2 id="activity-heading" className={styles.sectionTitle}>
+              최근 완료
+            </h2>
+            {loading && !activity.length ? (
+              <p role="status" className={styles.empty}>
+                불러오는 중
+              </p>
+            ) : error ? (
+              <div role="alert" className={styles.empty}>
+                <p>{error}</p>
+                <Button variant="secondary" onClick={() => void loadActivity()}>
+                  다시 시도
                 </Button>
-              </Card>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {data.friends.length === 0 ? (
-        <StatePanel
-          kind="empty"
-          title="아직 연결된 친구가 없어요"
-          description="초대 코드를 입력하거나 내 초대 링크를 공유해 첫 친구를 만나보세요."
-          action={
-            <Button
-              onClick={() =>
-                document.querySelector<HTMLInputElement>('input[name="inviteCode"]')?.focus()
-              }
-            >
-              <Link2 size={18} aria-hidden="true" /> 친구 초대하기
-            </Button>
-          }
-        />
-      ) : (
-        <section className="connection-section">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">FRIENDS</p>
-              <h2>함께하는 사람</h2>
-            </div>
-            <span className="task-count">{data.friends.length}명</span>
-          </div>
-          <div className="connection-list">
-            {data.friends.map((friend) => (
-              <Card
-                as="article"
-                className="connection-card connection-card--friend"
-                key={friend.id}
+              </div>
+            ) : !activity.length ? (
+              <p className={styles.empty}>
+                {data.friends.length
+                  ? "아직 친구의 완료 소식이 없어요"
+                  : "친구를 추가하면 완료 소식을 볼 수 있어요"}
+              </p>
+            ) : (
+              <div className={styles.feed}>{activity.map(activityCard)}</div>
+            )}
+            {cursor ? (
+              <Button
+                variant="secondary"
+                loading={pending === "activity-more"}
+                onClick={() => void run("activity-more", () => loadActivity(cursor), "")}
               >
-                <button
-                  className="connection-card__main"
-                  type="button"
-                  onClick={() => void openFriend(friend.id)}
-                >
-                  <div className="profile-avatar">{friend.displayName.slice(0, 1)}</div>
-                  <div>
-                    <h3>{friend.displayName}</h3>
-                    <p>오늘 완료율을 확인해 보세요.</p>
-                  </div>
-                </button>
-                {selected === friend.id && overview?.friendId === friend.id ? (
-                  <div className="friend-overview">
-                    <strong>
-                      {overview.todaySummary.percent === null
-                        ? "오늘 할 일 없음"
-                        : `오늘 ${overview.todaySummary.percent}% 완료`}
-                    </strong>
-                    {overview.occurrences.length ? (
-                      <FriendOccurrenceSections
-                        overview={overview}
-                        onEncourage={encourage}
-                        highlightId={highlightOccurrenceId}
-                      />
-                    ) : (
-                      <p>아직 공유된 할 일이 없어요.</p>
-                    )}
-                    <div className="button-row friend-overview__paging">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={loadingMore}
-                        onClick={() => void loadMore("past")}
-                      >
-                        더 지난 기록
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={loadingMore}
-                        onClick={() => void loadMore("future")}
-                      >
-                        더 먼 예정
-                      </Button>
-                    </div>
-                    {encouragementTarget &&
-                    overview.occurrences.some((item) => item.id === encouragementTarget) ? (
-                      <section className="friend-encouragement" aria-label="완료 항목 응원">
-                        <h4>이 완료에 보낸 응원</h4>
-                        {encouragements.length ? (
-                          <ul className="friend-encouragement__list">
-                            {encouragements.map((item) => (
-                              <li key={item.id}>
-                                <span>
-                                  <strong>{item.authorName}</strong>{" "}
-                                  {item.reaction ? reactionLabel(item.reaction) : null}{" "}
-                                  {item.message}
-                                  {item.visibility === "hidden_by_owner"
-                                    ? " · 소유자가 숨김"
-                                    : null}
-                                </span>
-                                {item.author_id === user?.id ? (
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => void removeMyEncouragement(item.id)}
-                                  >
-                                    삭제
-                                  </Button>
-                                ) : null}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p>아직 응원이 없어요.</p>
-                        )}
-                        <div className="friend-encouragement__form">
-                          <label className="field">
-                            <span className="field__label">반응</span>
-                            <select
-                              className="field__input"
-                              value={reaction}
-                              onChange={(event) => setReaction(event.target.value as Reaction | "")}
-                            >
-                              <option value="lemon">🍋 레몬</option>
-                              <option value="clap">👏 박수</option>
-                              <option value="heart">❤️ 하트</option>
-                              <option value="cheer">🎉 축하</option>
-                              <option value="">반응 없이 글만</option>
-                            </select>
-                          </label>
-                          <Field
-                            label="응원글 (선택, 120자 이하)"
-                            name="encouragementMessage"
-                            maxLength={120}
-                            value={encouragementMessage}
-                            onChange={(event) => setEncouragementMessage(event.target.value)}
-                            placeholder="잘했어!"
-                          />
-                          <Button
-                            size="sm"
-                            onClick={() => void saveEncouragement()}
-                            disabled={sendingEncouragement}
-                          >
-                            {encouragements.some((item) => item.author_id === user?.id)
-                              ? "내 응원 수정"
-                              : "응원 보내기"}
-                          </Button>
-                        </div>
-                      </section>
-                    ) : null}
-                    <div className="button-row">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => void removeFriend(friend.id)}
-                      >
-                        <UserRoundX size={15} /> 연결 해제
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => void block(friend.id)}>
-                        <X size={15} /> 차단
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
-              </Card>
+                활동 더 보기
+              </Button>
+            ) : null}
+          </section>
+        </>
+      ) : (
+        <section>
+          <div className={styles.friendHeader}>
+            <button className="icon-button" aria-label="친구 목록으로" onClick={leaveFriend}>
+              <ArrowLeft size={20} />
+            </button>
+            <h2>{friend?.displayName ?? "친구"}</h2>
+            <div className={styles.management}>
+              <button
+                className="icon-button"
+                aria-label="친구 관리"
+                aria-expanded={menu}
+                onClick={() => setMenu(!menu)}
+              >
+                <MoreHorizontal size={20} />
+              </button>
+              {menu ? (
+                <div className={styles.menu}>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setMenu(false);
+                      setActionError("");
+                      setConfirm("disconnect");
+                    }}
+                  >
+                    연결 해제
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setMenu(false);
+                      setActionError("");
+                      setConfirm("block");
+                    }}
+                  >
+                    차단
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+          <InboxReadReceipt
+            notificationId={notificationId}
+            target={{ kind: "friend", id: selected }}
+            resolved={Boolean(
+              overview &&
+              !friendLoading &&
+              params.get("friend") === selected &&
+              !params.has("occurrence"),
+            )}
+          />
+          <div className={styles.tabs} role="tablist" aria-label="친구 할 일">
+            {(
+              [
+                ["today", "오늘"],
+                ["overdue", "밀린 일"],
+                ["upcoming", "예정"],
+                ["history", "기록"],
+              ] as const
+            ).map(([view, label]) => (
+              <button
+                key={view}
+                role="tab"
+                aria-selected={overview?.view === view}
+                onClick={() => changeView(view)}
+                disabled={!overview}
+              >
+                {label}
+              </button>
             ))}
           </div>
+          {friendLoading ? <p role="status">불러오는 중</p> : null}
+          {friendError ? (
+            <div role="alert" className={styles.error}>
+              <p>{friendError}</p>
+              <Button variant="secondary" onClick={() => void openFriend(selected)}>
+                다시 시도
+              </Button>
+            </div>
+          ) : null}
+          {overview ? (
+            <>
+              <p className={styles.range}>
+                {overview.view === "today"
+                  ? `${overview.today} · 친구의 오늘`
+                  : overview.view === "overdue"
+                    ? `${overview.from}부터 ${addUtcDays(overview.today, -1)}까지`
+                    : overview.view === "upcoming"
+                      ? `${addUtcDays(overview.today, 1)}부터 ${overview.to}까지`
+                      : "최근 완료 순"}
+              </p>
+              {overview.view === "history" ? (
+                <div className={styles.feed}>
+                  {overview.history.length ? (
+                    overview.history.map(activityCard)
+                  ) : (
+                    <p className={styles.empty}>완료한 기록이 없어요</p>
+                  )}
+                </div>
+              ) : rows.length ? (
+                <div>
+                  {rows.map((row) => (
+                    <div key={row.id} className={styles.task}>
+                      <time>{row.occurrence_date}</time>
+                      <TaskRowView
+                        occurrence={row}
+                        summary={overview.summaries[row.id]}
+                        onOpen={() => openDetail(row.id, selected)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className={styles.empty}>이 기간에 할 일이 없어요</p>
+              )}
+              {overview.view !== "today" && (overview.view !== "history" || overview.cursor) ? (
+                <Button
+                  variant="secondary"
+                  loading={pending === "more"}
+                  onClick={() => void moreFriend()}
+                >
+                  {overview.view === "upcoming"
+                    ? "다음 1년 보기"
+                    : overview.view === "overdue"
+                      ? "이전 1년 보기"
+                      : "기록 더 보기"}
+                </Button>
+              ) : null}
+            </>
+          ) : null}
         </section>
       )}
+      <Panel
+        open={addOpen}
+        title="친구 추가"
+        onClose={() => {
+          if (!pending) setAddOpen(false);
+        }}
+        onBeforeClose={() => !pending}
+      >
+        <div className={styles.addBody}>
+          <InboxReadReceipt
+            notificationId={notificationId}
+            target={{ kind: "request", id: String(requestHighlight) }}
+            resolved={Boolean(
+              requestHighlight &&
+              [...data.incoming, ...data.outgoing].some(
+                (request) => request.id === requestHighlight,
+              ),
+            )}
+          />
+
+          {unavailable ? <p role="alert">이미 처리되었거나 더 이상 볼 수 없는 요청이에요</p> : null}
+          <section>
+            <h3>내 초대 코드</h3>
+            <div className={styles.code}>
+              <strong>{ownCode || "불러오는 중"}</strong>
+              <Button
+                variant="secondary"
+                disabled={!ownCode}
+                onClick={() =>
+                  void navigator.clipboard
+                    .writeText(ownCode)
+                    .then(() => setNotice("코드를 복사했어요"))
+                    .catch(() => setActionError("복사하지 못했어요. 코드를 직접 복사해 주세요"))
+                }
+              >
+                <Copy size={16} />
+                복사
+              </Button>
+            </div>
+          </section>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void run(
+                "send",
+                () => (demo ? demoRequestConnection(code) : sendConnectionRequest(code.trim())),
+                "요청을 보냈어요",
+              ).then((success) => {
+                if (success) setCode("");
+              });
+            }}
+          >
+            <Field
+              label="친구 초대 코드"
+              name="inviteCode"
+              value={code}
+              onChange={(event) => setCode(event.target.value.toUpperCase())}
+              autoComplete="off"
+            />
+            <Button
+              type="submit"
+              loading={pending === "send"}
+              disabled={!code.trim() || Boolean(pending)}
+            >
+              요청 보내기
+            </Button>
+          </form>
+          {actionError ? (
+            <p role="alert" className={styles.error}>
+              {actionError}
+            </p>
+          ) : null}
+          {notice ? <p role="status">{notice}</p> : null}
+          <section>
+            <h3>
+              받은 요청 <span>{data.incoming.length}</span>
+            </h3>
+            {data.incoming.length ? (
+              data.incoming.map((request) => (
+                <div
+                  key={request.id}
+                  className={`${styles.request} ${requestHighlight === request.id ? styles.highlight : ""}`}
+                >
+                  <strong>{request.displayName}</strong>
+                  <div>
+                    <Button
+                      disabled={Boolean(pending)}
+                      onClick={() =>
+                        void run(
+                          `accept-${request.id}`,
+                          () =>
+                            demo
+                              ? demoRespondRequest(request.id, true)
+                              : respondToConnectionRequest(request.id, true),
+                          "친구로 연결했어요",
+                        )
+                      }
+                    >
+                      수락
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      disabled={Boolean(pending)}
+                      onClick={() =>
+                        void run(
+                          `reject-${request.id}`,
+                          () =>
+                            demo
+                              ? demoRespondRequest(request.id, false)
+                              : respondToConnectionRequest(request.id, false),
+                          "요청을 거절했어요",
+                        )
+                      }
+                    >
+                      거절
+                    </Button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p>받은 요청이 없어요</p>
+            )}
+          </section>
+          <section>
+            <h3>
+              보낸 요청 <span>{data.outgoing.length}</span>
+            </h3>
+            {data.outgoing.length ? (
+              data.outgoing.map((request) => (
+                <div
+                  key={request.id}
+                  className={`${styles.request} ${requestHighlight === request.id ? styles.highlight : ""}`}
+                >
+                  <div>
+                    <strong>{request.displayName}</strong>
+                    <p>수락 대기 중</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    disabled={Boolean(pending)}
+                    onClick={() =>
+                      void run(
+                        `cancel-${request.id}`,
+                        () =>
+                          demo
+                            ? demoCancelRequest(request.id)
+                            : cancelConnectionRequest(request.id),
+                        "요청을 취소했어요",
+                      )
+                    }
+                  >
+                    요청 취소
+                  </Button>
+                </div>
+              ))
+            ) : (
+              <p>보낸 요청이 없어요</p>
+            )}
+          </section>
+        </div>
+      </Panel>
+      <ConfirmDialog
+        open={Boolean(confirm)}
+        title={`${friend?.displayName ?? "친구"}님${confirm === "block" ? "을 차단할까요?" : "과 연결을 해제할까요?"}`}
+        description={
+          confirm === "block"
+            ? "서로의 할 일을 볼 수 없고, 새 연결 요청도 받지 않아요"
+            : "서로의 할 일을 볼 수 없어요. 다시 연결하려면 요청과 수락이 필요해요"
+        }
+        confirmLabel={confirm === "block" ? "차단하기" : "연결 해제하기"}
+        onCancel={() => {
+          if (!pending) setConfirm(null);
+        }}
+        onConfirm={() => void destroy()}
+        loading={pending === "destroy"}
+        error={actionError}
+      />
+      {detail !== null ? (
+        <OccurrenceDetailPanel
+          occurrenceId={detail}
+          onClose={() => {
+            setDetail(null);
+            detailOwner.current = null;
+          }}
+          onChanged={() => {
+            void loadActivity();
+            if (selected) void openFriend(selected);
+          }}
+          onResolved={(resolved) => {
+            if (detailOwner.current && resolved.owner.id !== detailOwner.current) {
+              setDetail(null);
+              setUnavailable(true);
+            }
+          }}
+        />
+      ) : null}
     </AppShell>
   );
-}
-
-function FriendOccurrenceSections({
-  overview,
-  onEncourage,
-  highlightId,
-}: {
-  overview: { occurrences: TaskOccurrenceRow[]; today: string };
-  onEncourage: (occurrenceId: number) => Promise<void>;
-  highlightId: number | null;
-}) {
-  const groups = groupFriendOccurrences(overview.occurrences, overview.today);
-  return (
-    <div className="friend-overview__groups">
-      {(
-        [
-          ["오늘", groups.todayItems],
-          ["밀린 할 일", groups.overdue],
-          ["예정된 할 일", groups.upcoming],
-          ["완료 기록", groups.completedPast],
-        ] as const
-      ).map(([label, items]) =>
-        items.length ? (
-          <section key={label} className="friend-overview__group">
-            <h4>
-              {label} · {items.length}
-            </h4>
-            <ul>
-              {items.map((item) => (
-                <li
-                  id={`friend-task-${item.id}`}
-                  key={item.id}
-                  className={`${item.status === "completed" ? "is-complete" : ""} ${item.id === highlightId ? "is-highlighted" : ""}`.trim()}
-                >
-                  {item.status === "completed" ? (
-                    <Check size={15} aria-hidden="true" />
-                  ) : (
-                    <span className="task-dot" />
-                  )}
-                  <span>
-                    {item.title_snapshot} <small>{item.occurrence_date}</small>
-                  </span>
-                  {item.status === "completed" ? (
-                    <Button size="sm" variant="ghost" onClick={() => void onEncourage(item.id)}>
-                      응원 보기
-                    </Button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null,
-      )}
-    </div>
-  );
-}
-
-function reactionLabel(reaction: string): string {
-  return { lemon: "🍋", clap: "👏", heart: "❤️", cheer: "🎉" }[reaction] ?? "";
 }

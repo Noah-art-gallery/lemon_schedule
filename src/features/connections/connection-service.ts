@@ -17,6 +17,7 @@ import { listOccurrences } from "@/features/tasks/task-service";
 
 export interface FriendSummary {
   id: string;
+  connectionId?: number;
   displayName: string;
 }
 
@@ -66,7 +67,11 @@ export async function getConnectionData(userId: string): Promise<ConnectionData>
     outgoing: requests.filter((item) => item.requester_id === userId).map(withName),
     friends: connectionRows.map((item) => {
       const id = item.user_low_id === userId ? item.user_high_id : item.user_low_id;
-      return { id, displayName: profiles.get(id)?.display_name ?? "레몬 친구" };
+      return {
+        id,
+        connectionId: item.id,
+        displayName: profiles.get(id)?.display_name ?? "레몬 친구",
+      };
     }),
   };
 }
@@ -171,4 +176,47 @@ export async function listSocialActivity(
     }),
     data,
   );
+}
+
+export interface ConnectionChange {
+  kind: "connection" | "request";
+  change: "INSERT" | "UPDATE" | "DELETE";
+  connectionId?: number;
+  friendId?: string;
+}
+
+/** Tables are already published by the MVP migration; DELETE payloads may contain only the key. */
+export function subscribeConnectionChanges(
+  userId: string,
+  onChange: (event: ConnectionChange) => void,
+): () => void {
+  const client = getSupabaseClient();
+  let active = true;
+  const channel = client
+    .channel(`friend-connections-${userId}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "connections" }, (payload) => {
+      if (!active) return;
+      const row = (
+        payload.eventType === "DELETE" ? payload.old : payload.new
+      ) as Partial<ConnectionRow>;
+      const friendId =
+        row.user_low_id === userId
+          ? row.user_high_id
+          : row.user_high_id === userId
+            ? row.user_low_id
+            : undefined;
+      onChange({ kind: "connection", change: payload.eventType, connectionId: row.id, friendId });
+    })
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "connection_requests" },
+      (payload) => {
+        if (active) onChange({ kind: "request", change: payload.eventType });
+      },
+    )
+    .subscribe();
+  return () => {
+    active = false;
+    void client.removeChannel(channel);
+  };
 }
