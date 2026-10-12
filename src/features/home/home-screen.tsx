@@ -59,6 +59,34 @@ export function HomeScreen() {
   const pendingRef = useRef(new Set<number>());
   const [selected, setSelected] = useState<number | null>(null);
   const closingQuery = useRef(false);
+  const addTrigger = useRef<HTMLButtonElement>(null);
+  const returnOccurrence = useRef<number | null>(null);
+  useEffect(() => {
+    if (selected !== null) {
+      returnOccurrence.current = selected;
+      return;
+    }
+    const id = returnOccurrence.current;
+    if (id === null) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      if (
+        !document.activeElement ||
+        document.activeElement === document.body ||
+        !document.activeElement.isConnected
+      ) {
+        const row = document.querySelector<HTMLButtonElement>(
+          `button[data-occurrence-trigger="${id}"]`,
+        );
+        (row ?? addTrigger.current)?.focus();
+      }
+      if (!loading) returnOccurrence.current = null;
+    });
+    return () => {
+      active = false;
+    };
+  }, [selected, items, loading]);
   const [targetCheer, setTargetCheer] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [discard, setDiscard] = useState(false);
@@ -310,6 +338,7 @@ export function HomeScreen() {
         title="할 일"
         action={
           <Button
+            ref={addTrigger}
             onClick={() => {
               dirty.current = false;
               setAdding(true);
@@ -360,12 +389,12 @@ export function HomeScreen() {
           </Button>
         </div>
       ) : null}
-      {loading && tab !== "history" ? (
+      {loading && !items.length && tab !== "history" ? (
         <p className={styles.skeleton} role="status">
           할 일 불러오는 중
         </p>
       ) : null}
-      {tab === "today" && !loading ? (
+      {tab === "today" && !error && (!loading || items.length > 0) ? (
         <>
           <div className={styles.toolbar}>
             <h2 className={styles.sectionTitle}>{ownerToday}</h2>
@@ -411,7 +440,7 @@ export function HomeScreen() {
           ) : null}
         </>
       ) : null}
-      {tab === "upcoming" && !loading ? (
+      {tab === "upcoming" && !error && (!loading || items.length > 0) ? (
         <section>
           <div className={styles.toolbar}>
             <span className={styles.status}>

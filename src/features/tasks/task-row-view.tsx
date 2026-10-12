@@ -57,7 +57,7 @@ export function TaskRowView({
         </button>
       ) : null}
       <div className={styles.rowBody}>
-        <button className={styles.rowOpen} onClick={onOpen}>
+        <button className={styles.rowOpen} data-occurrence-trigger={occurrence.id} onClick={onOpen}>
           <span className={styles.taskTitle}>{occurrence.title_snapshot}</span>
           <span className={styles.meta}>
             {occurrence.due_time ? <span>{occurrence.due_time.slice(0, 5)}</span> : null}
