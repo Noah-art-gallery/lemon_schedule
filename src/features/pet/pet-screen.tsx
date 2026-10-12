@@ -1,13 +1,12 @@
 "use client";
 
-import { Palette, Sparkles } from "lucide-react";
+import { Leaf, Palette } from "lucide-react";
 import Image from "next/image";
-import { useCallback, useEffect, useState } from "react";
-
+import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeading } from "@/components/layout/page-heading";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { StatePanel } from "@/components/ui/state-panel";
 import { useAuth } from "@/features/auth/auth-provider";
 import { PetCanvas } from "./pet-canvas";
@@ -19,165 +18,226 @@ import {
   type PetDecorations,
   type PetDetails,
 } from "./pet-service";
+import styles from "./pet-screen.module.css";
 
-const blankPet: PetDetails = {
+const demoPet: PetDetails = {
   drawingPath: null,
-  lemonPoints: 0,
+  lemonPoints: 3,
   petLevel: 1,
   unlockCount: 0,
   unlockedItems: [],
-  decorations: {
-    selectedColor: "leaf-green",
-    selectedAccessory: null,
-    selectedBackground: null,
-  },
+  decorations: { selectedColor: "leaf-green", selectedAccessory: null, selectedBackground: null },
 };
-const demoPet: PetDetails = { ...blankPet, lemonPoints: 3 };
+const errorText = (cause: unknown, fallback: string) =>
+  cause instanceof Error ? cause.message : fallback;
 
 export function PetScreen() {
   const { user, demo } = useAuth();
-  const [pet, setPet] = useState<PetDetails>(demo ? demoPet : blankPet);
+  const [pet, setPet] = useState<PetDetails | null>(demo ? demoPet : null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [showCanvas, setShowCanvas] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [imageError, setImageError] = useState("");
+  const [reload, setReload] = useState(0);
+  const [drawing, setDrawing] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [discard, setDiscard] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const pending = useRef(false);
   const [notice, setNotice] = useState("");
-
-  const load = useCallback(async () => {
-    if (demo || !user) return;
-    try {
-      const next = await getPetDetails(user.id);
-      setPet(next);
-      setImageUrl(await getPetDrawingUrl(next.drawingPath));
-    } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : "펫 정보를 불러오지 못했어요.");
-    }
-  }, [demo, user]);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (demo || !user) return;
     let active = true;
     void getPetDetails(user.id)
-      .then(async (next) => ({ next, url: await getPetDrawingUrl(next.drawingPath) }))
-      .then(({ next, url }) => {
-        if (active) {
-          setPet(next);
-          setImageUrl(url);
+      .then(async (next) => {
+        if (!active) return;
+        setPet(next);
+        setLoadError("");
+        try {
+          const url = await getPetDrawingUrl(next.drawingPath);
+          if (active) {
+            setImageUrl(url);
+            setImageError("");
+          }
+        } catch (cause) {
+          if (active) setImageError(errorText(cause, "펫 그림을 불러오지 못했어요"));
         }
       })
-      .catch((cause: unknown) => {
-        if (active)
-          setNotice(cause instanceof Error ? cause.message : "펫 정보를 불러오지 못했어요.");
+      .catch((cause) => {
+        if (active) setLoadError(errorText(cause, "펫 정보를 불러오지 못했어요"));
       });
     return () => {
       active = false;
     };
-  }, [demo, user]);
+  }, [demo, user, reload]);
+  useEffect(
+    () => () => {
+      if (imageUrl?.startsWith("blob:")) URL.revokeObjectURL(imageUrl);
+    },
+    [imageUrl],
+  );
 
+  function beforeClose() {
+    if (pending.current) return false;
+    if (dirty) {
+      setDiscard(true);
+      return false;
+    }
+    return true;
+  }
+  function close() {
+    setDrawing(false);
+    setDirty(false);
+    setDiscard(false);
+    setError("");
+  }
   async function save(blob: Blob) {
-    if (demo || !user) {
-      setNotice(
-        "미리보기에서는 그림이 저장되지 않아요. Supabase 연결 후 나만의 펫을 저장할 수 있어요.",
-      );
-      setShowCanvas(false);
-      return;
-    }
+    if (pending.current || !pet) return;
+    pending.current = true;
+    setSaving(true);
+    setError("");
     try {
-      await savePetDrawing(user.id, blob);
-      await load();
-      setShowCanvas(false);
-      setNotice("나만의 레몬 펫을 저장했어요!");
+      if (!demo && user) {
+        const result = await savePetDrawing(user.id, blob);
+        setPet((current) => (current ? { ...current, drawingPath: result.drawingPath } : current));
+      }
+      setImageUrl(URL.createObjectURL(blob));
+      setImageError("");
+      close();
+      setNotice(demo ? "미리보기에 반영했어요" : "펫 그림을 저장했어요");
     } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : "펫 그림을 저장하지 못했어요.");
+      setError(errorText(cause, "펫 그림을 저장하지 못했어요"));
+    } finally {
+      pending.current = false;
+      setSaving(false);
     }
   }
-
   async function decorate(change: Partial<PetDecorations>) {
-    const next = { ...pet.decorations, ...change };
-    if (demo) {
-      setNotice("미리보기에서는 꾸미기가 저장되지 않아요.");
-      return;
-    }
+    if (pending.current || !pet) return;
+    pending.current = true;
+    setSaving(true);
+    setError("");
     try {
-      const saved = await savePetDecorations(next);
-      setPet((current) => ({ ...current, decorations: saved }));
-      setNotice("펫 꾸미기를 저장했어요.");
+      const next = { ...pet.decorations, ...change };
+      const saved = demo ? next : await savePetDecorations(next);
+      setPet((current) => (current ? { ...current, decorations: saved } : current));
+      setNotice(demo ? "미리보기에 반영했어요" : "꾸미기를 저장했어요");
     } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : "펫 꾸미기를 저장하지 못했어요.");
+      setError(errorText(cause, "꾸미기를 저장하지 못했어요"));
+    } finally {
+      pending.current = false;
+      setSaving(false);
     }
   }
-
-  const progress = pet.lemonPoints % 5;
-
+  const nextUnlock = [
+    { points: 5, label: "레몬 노랑 붓" },
+    { points: 15, label: "잎사귀 모자" },
+    { points: 30, label: "햇살 정원" },
+  ].find((item) => item.points > (pet?.lemonPoints ?? 0));
   return (
     <AppShell>
-      <PageHeading
-        eyebrow="MY LEMON PET"
-        title="나만의 펫"
-        description="직접 그린 펫과 함께 완료를 차곡차곡 쌓아보세요."
-      />
+      <PageHeading title="펫" />
       {notice ? (
         <p className="inline-alert" role="status">
           {notice}
         </p>
       ) : null}
-      <section className="pet-page-grid">
-        <Card
-          tone="lemon"
-          className={`pet-stage ${pet.decorations.selectedBackground === "sunny-garden" ? "is-garden" : ""} ${pet.decorations.selectedColor === "lemon-yellow" ? "is-yellow" : ""}`.trim()}
-        >
-          <span className="level-badge">LEVEL {pet.petLevel}</span>
-          {pet.decorations.selectedAccessory === "leaf-hat" ? (
-            <span className="pet-stage__accessory" aria-label="잎사귀 모자">
-              🍃
-            </span>
-          ) : null}
-          {imageUrl ? (
-            // Signed URLs are private storage assets and are only rendered for the owner.
-            <Image
-              src={imageUrl}
-              alt="내가 직접 그린 레몬 펫"
-              width={360}
-              height={360}
-              unoptimized
-              className="pet-stage__image"
-            />
-          ) : (
-            <Image
-              src="/images/lemon-pet-default.png"
-              alt="아직 직접 그린 펫이 없을 때 보이는 기본 레몬 펫"
-              width={360}
-              height={360}
-              className="pet-stage__image"
-              priority
-            />
-          )}
-          <div className="pet-stage__message">
-            <Sparkles size={17} aria-hidden="true" /> 오늘의 완료를 기다리고 있어요!
-          </div>
-        </Card>
-        <Card className="pet-details">
-          <p className="eyebrow">GROWTH</p>
-          <h2>레몬 포인트 {pet.lemonPoints}</h2>
-          <p>할 일을 처음 완료할 때마다 1포인트를 받아요.</p>
-          <div className="level-progress" aria-label={`다음 레벨까지 ${progress} / 5 포인트`}>
-            <span style={{ width: `${(progress / 5) * 100}%` }} />
-          </div>
-          {showCanvas ? (
-            <PetCanvas
-              onSave={save}
-              strokeColor={pet.decorations.selectedColor === "lemon-yellow" ? "#e7a900" : "#397a4b"}
-            />
-          ) : (
-            <Button fullWidth size="lg" onClick={() => setShowCanvas(true)}>
-              <Palette size={18} aria-hidden="true" /> 빈 도화지에서 그리기
-            </Button>
-          )}
-          <div className="pet-decoration-controls">
-            <p className="pet-unlocks">잠금 해제한 꾸미기 {pet.unlockCount}개</p>
-            <label className="field">
-              <span className="field__label">그리기 색상</span>
+      {error && !drawing ? (
+        <p role="alert" className="form-error">
+          {error}
+        </p>
+      ) : null}
+      {!pet ? (
+        <StatePanel
+          kind={loadError ? "error" : "loading"}
+          title={loadError || "펫 불러오는 중"}
+          action={
+            loadError ? (
+              <Button variant="secondary" onClick={() => setReload((value) => value + 1)}>
+                다시 시도
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <div className={styles.layout}>
+          <section className={styles.summary} aria-label="내 펫">
+            <div
+              className={`${styles.stage} ${pet.decorations.selectedBackground === "sunny-garden" ? styles.garden : ""}`}
+            >
+              {pet.decorations.selectedAccessory === "leaf-hat" ? (
+                <Leaf className={styles.accessory} size={36} aria-label="잎사귀 모자" />
+              ) : null}
+              <Image
+                src={imageUrl || "/images/lemon-pet-default.png"}
+                alt={imageUrl ? "내 펫" : "기본 레몬 펫"}
+                width={240}
+                height={240}
+                className={styles.image}
+                unoptimized={!!imageUrl}
+                priority
+              />
+            </div>
+            <div className={styles.growth}>
+              <span className={styles.level}>레벨 {pet.petLevel}</span>
+              <h2>
+                {pet.lemonPoints}
+                <span> 포인트</span>
+              </h2>
+              <div
+                className={styles.progress}
+                role="progressbar"
+                aria-label="다음 레벨까지"
+                aria-valuemin={0}
+                aria-valuemax={5}
+                aria-valuenow={pet.lemonPoints % 5}
+              >
+                <span style={{ width: `${((pet.lemonPoints % 5) / 5) * 100}%` }} />
+              </div>
+              <p>다음 레벨까지 {5 - (pet.lemonPoints % 5)}점</p>
+              <p className={styles.unlock}>
+                {nextUnlock
+                  ? `${nextUnlock.points - pet.lemonPoints}점 더 모으면 ${nextUnlock.label}`
+                  : "모든 꾸미기를 열었어요"}
+              </p>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setError("");
+                  setDiscard(false);
+                  setDirty(false);
+                  setDrawing(true);
+                }}
+                disabled={saving}
+              >
+                <Palette size={18} aria-hidden="true" />
+                새로 그리기
+              </Button>
+            </div>
+            {imageError ? (
+              <div className={styles.imageError}>
+                <p role="alert" className="form-error">
+                  {imageError}
+                </p>
+                <Button variant="ghost" onClick={() => setReload((value) => value + 1)}>
+                  그림 다시 불러오기
+                </Button>
+              </div>
+            ) : null}
+          </section>
+          <section className={styles.decorations} aria-labelledby="decoration-heading">
+            <h2 id="decoration-heading">꾸미기</h2>
+            <label className={styles.setting}>
+              <span>
+                <strong>그리기 붓 색상</strong>
+                <small>새로 그리는 선에 적용</small>
+              </span>
               <select
                 className="field__input"
+                aria-label="그리기 붓 색상"
                 value={pet.decorations.selectedColor}
+                disabled={saving}
                 onChange={(event) =>
                   void decorate({
                     selectedColor: event.target.value as PetDecorations["selectedColor"],
@@ -190,11 +250,13 @@ export function PetScreen() {
                 </option>
               </select>
             </label>
-            <label className="field">
-              <span className="field__label">스티커</span>
+            <label className={styles.setting}>
+              <strong>스티커</strong>
               <select
                 className="field__input"
+                aria-label="스티커"
                 value={pet.decorations.selectedAccessory ?? ""}
+                disabled={saving}
                 onChange={(event) =>
                   void decorate({ selectedAccessory: event.target.value ? "leaf-hat" : null })
                 }
@@ -205,11 +267,13 @@ export function PetScreen() {
                 </option>
               </select>
             </label>
-            <label className="field">
-              <span className="field__label">배경</span>
+            <label className={styles.setting}>
+              <strong>배경</strong>
               <select
                 className="field__input"
+                aria-label="배경"
                 value={pet.decorations.selectedBackground ?? ""}
+                disabled={saving}
                 onChange={(event) =>
                   void decorate({ selectedBackground: event.target.value ? "sunny-garden" : null })
                 }
@@ -220,16 +284,46 @@ export function PetScreen() {
                 </option>
               </select>
             </label>
+          </section>
+        </div>
+      )}
+      <Panel
+        open={drawing}
+        title="펫 그리기"
+        description="저장하면 기존 그림이 바뀌어요"
+        onBeforeClose={beforeClose}
+        onClose={close}
+      >
+        {error ? (
+          <p role="alert" className="form-error">
+            {error}
+          </p>
+        ) : null}
+        {discard ? (
+          <div className={styles.discard}>
+            <p>그리던 그림을 버릴까요?</p>
+            <div className="button-row">
+              <Button variant="secondary" onClick={() => setDiscard(false)}>
+                계속 그리기
+              </Button>
+              <Button variant="danger" onClick={close}>
+                그림 버리기
+              </Button>
+            </div>
           </div>
-        </Card>
-      </section>
-      {!demo && !user && !notice ? (
-        <StatePanel
-          kind="empty"
-          title="로그인이 필요해요"
-          description="내 펫은 나만 볼 수 있어요."
-        />
-      ) : null}
+        ) : null}
+        <div hidden={discard}>
+          {drawing ? (
+            <PetCanvas
+              onSave={save}
+              onDirtyChange={setDirty}
+              strokeColor={
+                pet?.decorations.selectedColor === "lemon-yellow" ? "#e7a900" : "#397a4b"
+              }
+            />
+          ) : null}
+        </div>
+      </Panel>
     </AppShell>
   );
 }
