@@ -42,6 +42,10 @@ function NotificationContent() {
   useEffect(() => {
     selectedRef.current = selected;
   }, [selected]);
+  const loadedBoundary = useRef<{ scope: string; oldestId: number | null }>({
+    scope: "",
+    oldestId: null,
+  });
   const generation = useRef(0);
   const paging = useRef(false);
   const readLock = useRef(false);
@@ -52,6 +56,10 @@ function NotificationContent() {
       const version = ++generation.current;
       const key = `${account}:${filter}`;
       const target = selectedRef.current;
+      const oldestId =
+        !invalidate && loadedBoundary.current.scope === key
+          ? loadedBoundary.current.oldestId
+          : null;
       const clearTarget = () => {
         if (target && selectedRef.current?.id === target.id) {
           setSelected(null);
@@ -69,6 +77,18 @@ function NotificationContent() {
         if (!demo && !userId) return;
         const page = demo ? demoListInbox({ filter }) : await listInbox({ filter });
         if (version !== generation.current) return;
+        while (
+          oldestId !== null &&
+          page.nextCursor !== null &&
+          (page.items.at(-1)?.id ?? Infinity) > oldestId
+        ) {
+          const next = demo
+            ? demoListInbox({ filter, cursor: page.nextCursor })
+            : await listInbox({ filter, cursor: page.nextCursor });
+          if (version !== generation.current) return;
+          page.items.push(...next.items);
+          page.nextCursor = next.nextCursor;
+        }
         if (invalidate && target) {
           let fresh = page.items.find((item) => item.id === target.id);
           if (!fresh) {
@@ -86,6 +106,7 @@ function NotificationContent() {
           )
             clearTarget();
         }
+        loadedBoundary.current = { scope: key, oldestId: page.items.at(-1)?.id ?? null };
         setItems(page.items);
         setCursor(page.nextCursor);
         setLoadedScope(key);
@@ -122,6 +143,10 @@ function NotificationContent() {
     try {
       const page = demo ? demoListInbox({ filter, cursor }) : await listInbox({ filter, cursor });
       if (version !== generation.current) return;
+      loadedBoundary.current = {
+        scope: `${account}:${filter}`,
+        oldestId: page.items.at(-1)?.id ?? loadedBoundary.current.oldestId,
+      };
       setItems((current) => {
         const known = new Set(current.map((item) => item.id));
         return [...current, ...page.items.filter((item) => !known.has(item.id))];
