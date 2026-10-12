@@ -1,7 +1,12 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { FriendsScreen } from "./friends-screen";
-import { blockFriend, getConnectionData, listSocialActivity } from "./connection-service";
+import {
+  blockFriend,
+  getConnectionData,
+  listSocialActivity,
+  type ConnectionChange,
+} from "./connection-service";
 import { listOccurrenceWindow } from "@/features/tasks/task-service";
 import {
   listEncouragementSummaries,
@@ -10,7 +15,7 @@ import {
 import { demoListSocial } from "@/features/tasks/demo-task-store";
 const reviewAuth = vi.hoisted(() => ({ id: "demo" as string | null }));
 const realtime = vi.hoisted(() => ({
-  listener: null as null | ((kind: "connection" | "request") => void),
+  listener: null as null | ((event: ConnectionChange) => void),
   stop: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
@@ -45,13 +50,20 @@ vi.mock("@/features/encouragements/encouragement-service", async (original) => (
   sendEncouragement: vi.fn(),
 }));
 vi.mock("@/features/notifications/inbox-read-receipt", () => ({ InboxReadReceipt: () => null }));
+vi.mock("@/features/tasks/occurrence-detail-panel", () => ({
+  OccurrenceDetailPanel: () => (
+    <section role="dialog">
+      <input aria-label="응원 초안" defaultValue="" />
+    </section>
+  ),
+}));
 beforeEach(() => {
   vi.clearAllMocks();
   reviewAuth.id = "demo";
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   vi.mocked(listOccurrenceWindow).mockResolvedValue({ today: "2026-10-12", occurrences: [] });
   vi.mocked(getConnectionData).mockResolvedValue({
-    friends: [{ id: "demo-friend-1", displayName: "지민" }],
+    friends: [{ id: "demo-friend-1", connectionId: 71, displayName: "지민" }],
     incoming: [],
     outgoing: [],
   });
@@ -232,7 +244,7 @@ it("clears cached detail immediately on a realtime relationship change before re
   await waitFor(() => expect(screen.getByRole("tab", { name: "기록" })).not.toBeDisabled());
   fireEvent.click(screen.getByRole("tab", { name: "기록" }));
   vi.mocked(getConnectionData).mockImplementation(() => new Promise(() => {}));
-  act(() => realtime.listener?.("connection"));
+  act(() => realtime.listener?.({ kind: "connection", change: "DELETE", connectionId: 71 }));
   expect(screen.queryByText("수학 문제 5개 풀기")).not.toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "지민" })).not.toBeInTheDocument();
 });
@@ -274,4 +286,69 @@ it("ignores an old account's late feed response after the next account loads", a
   await screen.findByText("친구를 추가하면 완료 소식을 볼 수 있어요");
   await act(async () => resolve({ items: demoListSocial("demo-friend-1"), nextCursor: null }));
   expect(screen.queryByText("수학 문제 5개 풀기")).not.toBeInTheDocument();
+});
+
+it("keeps a current friend's draft when another friendship is added", async () => {
+  render(<FriendsScreen />);
+  fireEvent.click(await screen.findByRole("button", { name: "응원 쓰기" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "응원 초안" }), {
+    target: { value: "아직 작성 중" },
+  });
+  vi.mocked(getConnectionData).mockResolvedValue({
+    friends: [
+      { id: "demo-friend-1", displayName: "지민" },
+      { id: "new-friend", displayName: "새 친구" },
+    ],
+    incoming: [],
+    outgoing: [],
+  });
+  await act(async () =>
+    realtime.listener?.({
+      kind: "connection",
+      change: "INSERT",
+      friendId: "new-friend",
+      connectionId: 72,
+    }),
+  );
+  expect(screen.queryByRole("textbox", { name: "응원 초안" })).toHaveValue("아직 작성 중");
+});
+it.each(["INSERT", "UPDATE", "DELETE"] as const)(
+  "keeps the draft across an unrelated request %s",
+  async (change) => {
+    render(<FriendsScreen />);
+    fireEvent.click(await screen.findByRole("button", { name: "응원 쓰기" }));
+    fireEvent.change(screen.getByLabelText("응원 초안"), { target: { value: "keep this draft" } });
+    await act(async () => realtime.listener?.({ kind: "request", change }));
+    expect(screen.getByLabelText("응원 초안")).toHaveValue("keep this draft");
+  },
+);
+it("discards only the current friend's draft after its exact connection deletion", async () => {
+  render(<FriendsScreen />);
+  fireEvent.click(await screen.findByRole("button", { name: "응원 쓰기" }));
+  fireEvent.change(screen.getByLabelText("응원 초안"), { target: { value: "must disappear" } });
+  vi.mocked(getConnectionData).mockImplementation(() => new Promise(() => {}));
+  act(() => realtime.listener?.({ kind: "connection", change: "DELETE", connectionId: 71 }));
+  expect(screen.queryByLabelText("응원 초안")).not.toBeInTheDocument();
+});
+it("keeps a current draft when a different friend's connection is deleted", async () => {
+  vi.mocked(getConnectionData).mockResolvedValue({
+    friends: [
+      { id: "demo-friend-1", connectionId: 71, displayName: "지민" },
+      { id: "another-friend", connectionId: 72, displayName: "다른 친구" },
+    ],
+    incoming: [],
+    outgoing: [],
+  });
+  render(<FriendsScreen />);
+  fireEvent.click(await screen.findByRole("button", { name: "응원 쓰기" }));
+  fireEvent.change(screen.getByLabelText("응원 초안"), { target: { value: "still connected" } });
+  vi.mocked(getConnectionData).mockResolvedValue({
+    friends: [{ id: "demo-friend-1", connectionId: 71, displayName: "지민" }],
+    incoming: [],
+    outgoing: [],
+  });
+  await act(async () =>
+    realtime.listener?.({ kind: "connection", change: "DELETE", connectionId: 72 }),
+  );
+  expect(screen.getByLabelText("응원 초안")).toHaveValue("still connected");
 });

@@ -213,20 +213,28 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
     const unsubscribe = demo
       ? subscribeDemoTasks(refresh)
       : userId
-        ? subscribeConnectionChanges(userId, (kind) => {
+        ? subscribeConnectionChanges(userId, (event) => {
             if (!mounted.current) return;
-            if (kind === "connection") {
-              generation.current++;
-              connectionGeneration.current++;
-              friendGeneration.current++;
-              cache.current.clear();
-              activityCount.current = 0;
-              setActivity([]);
-              setCursor(null);
-              applyConnections(emptyConnections);
-              setNotice("친구 연결이 변경되어 다시 확인하고 있어요");
-              void loadActivity();
-            } else refresh();
+            if (event.kind === "connection" && event.change === "DELETE") {
+              const current = currentConnections.current;
+              const removed = current.friends.find(
+                (friend) =>
+                  (event.friendId !== undefined && friend.id === event.friendId) ||
+                  (event.connectionId !== undefined && friend.connectionId === event.connectionId),
+              );
+              if (removed) {
+                generation.current++;
+                connectionGeneration.current++;
+                applyConnections({
+                  ...current,
+                  friends: current.friends.filter((friend) => friend.id !== removed.id),
+                });
+              }
+            }
+            // Additions and unrelated changes must preserve the active task and unsent text.
+            // An unidentified DELETE is resolved by the authorized connection query.
+            if (event.kind === "connection" && event.change === "INSERT") void loadActivity();
+            else refresh();
           })
         : () => {};
     return () => {
