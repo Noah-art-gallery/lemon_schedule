@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { MoreHorizontal } from "lucide-react";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,7 @@ export interface OccurrenceDetailPanelProps {
   onClose: () => void;
   onChanged?: () => void;
   onResolved?: (detail: OccurrenceDetail) => void;
+  notice?: ReactNode;
 }
 export function OccurrenceDetailPanel({
   occurrenceId,
@@ -50,6 +51,7 @@ export function OccurrenceDetailPanel({
   onClose,
   onChanged,
   onResolved,
+  notice,
 }: OccurrenceDetailPanelProps) {
   const { demo, user } = useAuth();
   const viewer = demo ? "demo" : user?.id;
@@ -298,6 +300,7 @@ export function OccurrenceDetailPanel({
       onClose={close}
       onBeforeClose={beforeClose}
     >
+      {!loading && detail?.occurrence.id === effectiveId ? notice : null}
       {discard ? (
         <section className={styles.inlineConfirm} role="alert">
           <p>작성 중인 내용을 버릴까요?</p>
