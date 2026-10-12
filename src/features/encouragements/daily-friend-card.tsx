@@ -3,6 +3,7 @@ import { Check, Circle, ChevronRight, MessageCircle, Quote, X } from "lucide-rea
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/features/auth/auth-provider";
 import { Button } from "@/components/ui/button";
+import { FeedbackToast, LoadingIndicator, useFeedback } from "@/components/ui/feedback";
 import { ProfileAvatar } from "@/components/ui/profile-avatar";
 import { Panel } from "@/components/ui/panel";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -55,6 +56,7 @@ export function DailyFriendCard({
   const [day, setDay] = useState<EncouragementDay | null>(null);
   const dayRef = useRef(day);
   const [loading, setLoading] = useState(true);
+  const { feedback, showFeedback, dismissFeedback } = useFeedback();
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
   const [quoteOpen, setQuoteOpen] = useState(false);
@@ -202,6 +204,10 @@ export function DailyFriendCard({
       const next = { ...day, mine };
       dayRef.current = next;
       setDay(next);
+      showFeedback({
+        kind: "success",
+        title: remove ? "응원을 취소했어요" : day.mine ? "응원을 수정했어요" : "응원을 보냈어요",
+      });
       setEditing(false);
       setConfirm(false);
       callbacks.current.onDirtyChange?.(false);
@@ -265,11 +271,8 @@ export function DailyFriendCard({
           ) : null}
         </div>
       ) : null}
-      {loading ? (
-        <p role="status" className={styles.date}>
-          오늘을 불러오는 중
-        </p>
-      ) : null}
+      <FeedbackToast feedback={feedback} onDismiss={dismissFeedback} />
+      {loading ? <LoadingIndicator compact label="오늘을 불러오는 중" /> : null}
       {!editing && error ? (
         <div role="alert" className={styles.error}>
           <p>{error}</p>

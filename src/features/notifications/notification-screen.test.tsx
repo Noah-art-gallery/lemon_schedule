@@ -132,6 +132,7 @@ it("uses the global head as mark-all high-water even from a filtered view", asyn
   fireEvent.click(screen.getByRole("button", { name: "모두 읽음" }));
   await waitFor(() => expect(markAllInboxRead).toHaveBeenCalledWith({ throughId: 12 }));
   expect(listInbox).toHaveBeenCalledWith({ filter: "all", limit: 1 });
+  expect(screen.getByText("소식을 모두 읽음으로 표시했어요")).toBeVisible();
 });
 it("discards late pagination when filters change", async () => {
   let finish!: (result: { items: InboxItem[]; nextCursor: null }) => void;

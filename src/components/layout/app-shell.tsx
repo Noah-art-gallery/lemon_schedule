@@ -5,6 +5,7 @@ import { useEffect } from "react";
 
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { TopBar } from "@/components/layout/top-bar";
+import { LoadingIndicator } from "@/components/ui/feedback";
 import { useAuth } from "@/features/auth/auth-provider";
 import { listenForPushNavigation } from "@/features/push/push-service";
 import { useInboxUnreadCount } from "@/features/notifications/inbox-events";
@@ -37,8 +38,8 @@ export function AppShell({ children, notificationCount }: AppShellProps) {
 
   if (status === "loading" || status === "unauthenticated") {
     return (
-      <main className="route-loading" aria-live="polite">
-        <span className="button__spinner" aria-hidden="true" /> 불러오는 중
+      <main className="route-loading">
+        <LoadingIndicator label="불러오는 중" />
       </main>
     );
   }

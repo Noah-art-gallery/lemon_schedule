@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeading } from "@/components/layout/page-heading";
 import { Button } from "@/components/ui/button";
+import { FeedbackToast, LoadingIndicator, useFeedback } from "@/components/ui/feedback";
 import { Field } from "@/components/ui/field";
 import { ProfileAvatar, avatarOptions } from "@/components/ui/profile-avatar";
 import { Panel } from "@/components/ui/panel";
@@ -55,7 +56,7 @@ export function ProfileScreen() {
   }, [discard]);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
-  const [message, setMessage] = useState("");
+  const { feedback, showFeedback, dismissFeedback } = useFeedback();
   const [error, setError] = useState("");
   const [pushState, setPushState] = useState<DevicePushStatus | "loading" | "error">("loading");
   const [pushBusy, setPushBusy] = useState(false);
@@ -169,7 +170,10 @@ export function ProfileScreen() {
           : current,
       );
       setPanel(null);
-      setMessage(demo ? "미리보기에 반영했어요" : "프로필을 저장했어요");
+      showFeedback({
+        kind: "success",
+        title: demo ? "미리보기에 반영했어요" : "프로필을 저장했어요",
+      });
     } catch (cause) {
       setError(errorText(cause, "프로필을 저장하지 못했어요"));
     } finally {
@@ -180,12 +184,12 @@ export function ProfileScreen() {
   async function copyInvite() {
     if (!profile) return;
     setError("");
-    setMessage("");
+    dismissFeedback();
     try {
       await navigator.clipboard.writeText(
         `${profile.inviteCode}\n${window.location.origin}/signup/?invite=${encodeURIComponent(profile.inviteCode)}`,
       );
-      setMessage("초대 코드와 링크를 복사했어요");
+      showFeedback({ kind: "success", title: "초대 코드와 링크를 복사했어요" });
     } catch {
       setError("복사하지 못했어요. 초대 코드를 직접 선택해 복사해 주세요");
     }
@@ -195,7 +199,7 @@ export function ProfileScreen() {
     busyRef.current = true;
     setBusy(true);
     setError("");
-    setMessage("");
+    dismissFeedback();
     try {
       if (!demo && user) await signOut();
       router.replace("/login/");
@@ -234,11 +238,7 @@ export function ProfileScreen() {
   return (
     <AppShell>
       <PageHeading title="내 정보" />
-      {message ? (
-        <p className="inline-alert" role="status">
-          {message}
-        </p>
-      ) : null}
+      <FeedbackToast feedback={feedback} onDismiss={dismissFeedback} />
       {error && !panel ? (
         <p className="form-error" role="alert">
           {error}
@@ -288,7 +288,11 @@ export function ProfileScreen() {
                   <Bell size={18} aria-hidden="true" />
                   휴대폰 알림
                 </h2>
-                <p aria-live="polite">{statusText}</p>
+                {pushState === "loading" ? (
+                  <LoadingIndicator compact label={statusText} />
+                ) : (
+                  <p aria-live="polite">{statusText}</p>
+                )}
               </div>
               {(pushState === "on" || pushState === "off") && !demo ? (
                 <Button
@@ -327,7 +331,11 @@ export function ProfileScreen() {
               onClick={() => void logout()}
             >
               <LogOut size={18} aria-hidden="true" />
-              <span>{busy && !panel ? "로그아웃 중" : "로그아웃"}</span>
+              {busy && !panel ? (
+                <LoadingIndicator compact label="로그아웃 중" />
+              ) : (
+                <span>로그아웃</span>
+              )}
             </button>
           </section>
         </div>

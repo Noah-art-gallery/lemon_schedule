@@ -1,5 +1,5 @@
 import { StrictMode } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { demoCreateTask, demoToggleOccurrence } from "@/features/tasks/demo-task-store";
 import { HomeScreen } from "./home-screen";
@@ -36,4 +36,23 @@ it("keeps more than twenty completion records and distant future tasks reachable
   expect(await screen.findAllByText(/^보존 기록 /)).toHaveLength(25);
   fireEvent.click(screen.getByRole("tab", { name: "예정" }));
   expect(await screen.findByText("먼 미래 일정")).toBeVisible();
+});
+
+it("celebrates completion in place and never rewards an undo or recompletion", async () => {
+  render(<HomeScreen />);
+  const button = await screen.findByRole("button", { name: "영어 단어 10개 완료" });
+  button.focus();
+  fireEvent.click(button);
+  await screen.findByText("할 일 하나, 해냈어요");
+  expect(screen.getByText(/성장/)).toBeVisible();
+  expect(screen.getByRole("button", { name: "영어 단어 10개 완료 취소" })).toBe(button);
+  expect(button).toHaveFocus();
+  fireEvent.click(button);
+  await screen.findByText("완료를 취소했어요");
+  expect(screen.queryByText(/성장/)).not.toBeInTheDocument();
+  fireEvent.click(button);
+  await screen.findByText("할 일 하나, 해냈어요");
+  expect(screen.queryByText(/성장/)).not.toBeInTheDocument();
+  await waitFor(() => expect(button).toHaveAttribute("aria-busy", "false"));
+  expect(button).toHaveFocus();
 });

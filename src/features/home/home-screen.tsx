@@ -8,6 +8,7 @@ import { DailyEncouragementPanel } from "@/features/encouragements/daily-encoura
 import { PageHeading } from "@/components/layout/page-heading";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
+import { FeedbackToast, LoadingIndicator, useFeedback } from "@/components/ui/feedback";
 import { useAuth } from "@/features/auth/auth-provider";
 import { listEncouragementSummaries } from "@/features/encouragements/encouragement-service";
 import { getPetDetails, getPetDrawingUrl } from "@/features/pet/pet-service";
@@ -113,7 +114,13 @@ export function HomeScreen() {
   const dirty = useRef(false);
   const editorBusy = useRef(false);
   const [futureNotice, setFutureNotice] = useState("");
-  const [feedback, setFeedback] = useState("");
+  const { feedback, showFeedback, dismissFeedback } = useFeedback();
+  const [completionVersions, setCompletionVersions] = useState<Map<number, number>>(new Map());
+  useEffect(() => {
+    if (!completionVersions.size) return;
+    const timer = setTimeout(() => setCompletionVersions(new Map()), 800);
+    return () => clearTimeout(timer);
+  }, [completionVersions]);
   const [pet, setPet] = useState<{ url: string | null; points: number } | null>(
     demo ? { url: demoGetPetImage(), points: demoListHistory().length } : null,
   );
@@ -306,11 +313,6 @@ export function HomeScreen() {
       active = false;
     };
   }, [demo, user, items]);
-  useEffect(() => {
-    if (!feedback) return;
-    const timer = setTimeout(() => setFeedback(""), 2800);
-    return () => clearTimeout(timer);
-  }, [feedback]);
   function open(id: number) {
     setTargetCheer(null);
     setSelected(id);
@@ -329,6 +331,7 @@ export function HomeScreen() {
   async function toggle(row: TaskOccurrenceRow) {
     if (pendingRef.current.has(row.id)) return;
     pendingRef.current.add(row.id);
+    dismissFeedback();
     setPending(new Set(pendingRef.current));
     setRowErrors((previous) => {
       const next = new Map(previous);
@@ -336,18 +339,26 @@ export function HomeScreen() {
       return next;
     });
     try {
+      let rewardPoints: number | undefined;
       if (demo) {
-        if (demoToggleOccurrence(row.id).firstCompletion) {
-          setFeedback("완료 · 펫이 1포인트 성장했어요 · 미리보기");
-        }
+        if (demoToggleOccurrence(row.id).firstCompletion) rewardPoints = 1;
       } else if (row.status === "completed") {
         await reopenOccurrence(row.id);
       } else {
         const result = await completeOccurrence(row.id);
-        if (result.firstCompletion)
-          setFeedback(`완료 · 펫이 ${result.rewardPoints}포인트 성장했어요`);
+        if (result.firstCompletion && result.rewardGranted) rewardPoints = result.rewardPoints;
       }
       const status = row.status === "completed" ? "pending" : "completed";
+      showFeedback({
+        kind: status === "completed" ? "completion" : "info",
+        title: status === "completed" ? "할 일 하나, 해냈어요" : "완료를 취소했어요",
+        description: demo ? "미리보기" : undefined,
+        rewardPoints,
+      });
+      if (status === "completed")
+        setCompletionVersions((previous) =>
+          new Map(previous).set(row.id, (previous.get(row.id) ?? 0) + 1),
+        );
       if (row.occurrence_date < ownerToday)
         setRetainedOverdue((previous) => new Set(previous).add(row.id));
       setItems((previous) =>
@@ -381,6 +392,11 @@ export function HomeScreen() {
     else await createTask(input);
     dirty.current = false;
     setAdding(false);
+    showFeedback({
+      kind: "success",
+      title: "할 일을 추가했어요",
+      description: demo ? "미리보기" : undefined,
+    });
     if (input.dueDate > ownerToday) {
       setFutureNotice(input.dueDate);
       if (input.dueDate > to) setTo(input.dueDate);
@@ -408,6 +424,7 @@ export function HomeScreen() {
           occurrence={row}
           summary={summaries.get(row.id)}
           pending={pending.has(row.id)}
+          completionVersion={completionVersions.get(row.id)}
           onOpen={() => open(row.id)}
           onToggle={() => {
             void toggle(row);
@@ -467,6 +484,7 @@ export function HomeScreen() {
             className={styles.tab}
             onClick={() => {
               setRetainedOverdue(new Set());
+              setCompletionVersions(new Map());
               setTab(value);
             }}
           >
@@ -497,9 +515,7 @@ export function HomeScreen() {
         </div>
       ) : null}
       {loading && !items.length && tab !== "history" ? (
-        <p className={styles.skeleton} role="status">
-          할 일 불러오는 중
-        </p>
+        <LoadingIndicator label="할 일 불러오는 중" />
       ) : null}
       {tab === "today" && !error && (!loading || items.length > 0) ? (
         <>
@@ -594,11 +610,7 @@ export function HomeScreen() {
               />
             </div>
           ))}
-          {historyLoading ? (
-            <p role="status" className={styles.skeleton}>
-              기록 불러오는 중
-            </p>
-          ) : null}
+          {historyLoading ? <LoadingIndicator label="기록 불러오는 중" /> : null}
           {!historyLoading && !historyError && !history.length ? (
             <div className={styles.empty}>완료한 기록이 없어요</div>
           ) : null}
@@ -686,11 +698,7 @@ export function HomeScreen() {
           );
         }}
       />
-      {feedback ? (
-        <div role="status" className={styles.toast}>
-          {feedback}
-        </div>
-      ) : null}
+      <FeedbackToast feedback={feedback} onDismiss={dismissFeedback} />
     </AppShell>
   );
 }

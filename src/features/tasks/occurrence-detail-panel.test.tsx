@@ -61,6 +61,7 @@ it("locks completion while the request is pending and retains the prior status o
   await screen.findByRole("alert");
   expect(screen.getByText("진행 중")).toBeInTheDocument();
   expect(button).not.toBeDisabled();
+  expect(screen.queryByText("할 일 하나, 해냈어요")).not.toBeInTheDocument();
 });
 
 it.each([null, "19:30"])(
@@ -142,12 +143,7 @@ it("keeps received encouragement visible without owner hiding controls", async (
 
 it("reports completed status without forcing a list refresh when the home preserves placement", async () => {
   const before = demoGetDetail(2);
-  vi.mocked(getOccurrenceDetail)
-    .mockResolvedValueOnce(before)
-    .mockResolvedValueOnce({
-      ...before,
-      occurrence: { ...before.occurrence, status: "completed" },
-    });
+  vi.mocked(getOccurrenceDetail).mockResolvedValue(before);
   vi.mocked(completeOccurrence).mockResolvedValue({
     status: "completed",
     completedAt: "2026-10-12T12:00:00Z",
@@ -166,8 +162,51 @@ it("reports completed status without forcing a list refresh when the home preser
       onCompletionChanged={completed}
     />,
   );
-  fireEvent.click(await screen.findByRole("button", { name: "완료하기" }));
+  const button = await screen.findByRole("button", { name: "완료하기" });
+  button.focus();
+  fireEvent.click(button);
   await waitFor(() => expect(completed).toHaveBeenCalledWith(2, "completed"));
   expect(changed).not.toHaveBeenCalled();
-  expect(await screen.findByRole("button", { name: "완료 취소" })).toBeVisible();
+  expect(await screen.findByRole("button", { name: "완료 취소" })).toBe(button);
+  expect(button).toHaveFocus();
+  expect(screen.getByText("할 일 하나, 해냈어요")).toBeVisible();
+  expect(screen.queryByText(/성장/)).not.toBeInTheDocument();
+  expect(getOccurrenceDetail).toHaveBeenCalledTimes(1);
 });
+
+it.each([
+  { firstCompletion: true, rewardGranted: true, rewardPoints: 1, rewarded: true },
+  { firstCompletion: false, rewardGranted: false, rewardPoints: 0, rewarded: false },
+  { firstCompletion: true, rewardGranted: false, rewardPoints: 0, rewarded: false },
+])(
+  "celebrates only a confirmed completion and shows the granted reward ($rewarded)",
+  async ({ rewarded, ...result }) => {
+    vi.mocked(getOccurrenceDetail).mockResolvedValue(demoGetDetail(2));
+    let resolve!: (value: Awaited<ReturnType<typeof completeOccurrence>>) => void;
+    vi.mocked(completeOccurrence).mockImplementation(
+      () =>
+        new Promise((yes) => {
+          resolve = yes;
+        }),
+    );
+    render(<OccurrenceDetailPanel occurrenceId={2} onClose={vi.fn()} />);
+    const button = await screen.findByRole("button", { name: "완료하기" });
+    button.focus();
+    fireEvent.click(button);
+    expect(screen.queryByText("할 일 하나, 해냈어요")).not.toBeInTheDocument();
+    expect(button).toHaveAttribute("aria-busy", "true");
+    await act(async () =>
+      resolve({
+        ...result,
+        status: "completed",
+        completedAt: "2026-10-13T00:00:00Z",
+        completionEventId: 1,
+      }),
+    );
+    expect(screen.getByText("할 일 하나, 해냈어요")).toBeVisible();
+    if (rewarded) expect(screen.getByText(/성장/)).toBeVisible();
+    else expect(screen.queryByText(/성장/)).not.toBeInTheDocument();
+    expect(button).toHaveFocus();
+    expect(button).toHaveAttribute("aria-busy", "false");
+  },
+);

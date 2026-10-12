@@ -43,9 +43,11 @@ it("실패한 프로필 입력을 유지하고 재시도한다", async () => {
   fireEvent.click(screen.getByRole("button", { name: "저장" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("저장 실패");
   expect(input).toHaveValue("새 이름");
+  expect(screen.queryByText("프로필을 저장했어요")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "저장" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   expect(screen.getByText("새 이름")).toBeInTheDocument();
+  expect(screen.getByText("프로필을 저장했어요")).toBeVisible();
 });
 it("웹에서는 알림 켜기를 제공하지 않는다", async () => {
   render(<ProfileScreen />);

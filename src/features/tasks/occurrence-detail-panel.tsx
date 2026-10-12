@@ -1,8 +1,10 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { MoreHorizontal } from "lucide-react";
+import { Check, MoreHorizontal, LoaderCircle } from "lucide-react";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
+import { FeedbackToast, LoadingIndicator, useFeedback } from "@/components/ui/feedback";
+import { CompletionBurst } from "./task-row-view";
 import { useAuth } from "@/features/auth/auth-provider";
 import { EncouragementThread } from "@/features/encouragements/encouragement-thread";
 import type { OccurrenceDetail } from "@/types/contracts";
@@ -53,7 +55,13 @@ export function OccurrenceDetailPanel({
   const [discard, setDiscard] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [effectiveId, setEffectiveId] = useState(occurrenceId);
-  const [feedback, setFeedback] = useState("");
+  const { feedback, showFeedback, dismissFeedback } = useFeedback();
+  const [completionVersion, setCompletionVersion] = useState(0);
+  useEffect(() => {
+    if (!completionVersion) return;
+    const timer = setTimeout(() => setCompletionVersion(0), 800);
+    return () => clearTimeout(timer);
+  }, [completionVersion]);
   const detailHeading = useRef<HTMLHeadingElement>(null);
   const restoreDetailFocus = useRef(false);
   const dirty = useRef(false);
@@ -104,6 +112,7 @@ export function OccurrenceDetailPanel({
       setDetail(null);
       setEditor(null);
       setDeleteConfirm(false);
+      setCompletionVersion(0);
       dirty.current = false;
       if (effectiveId !== null) void load(effectiveId);
     });
@@ -113,11 +122,6 @@ export function OccurrenceDetailPanel({
       generation.current++;
     };
   }, [effectiveId, load]);
-  useEffect(() => {
-    if (!feedback) return;
-    const timer = setTimeout(() => setFeedback(""), 2800);
-    return () => clearTimeout(timer);
-  }, [feedback]);
   useEffect(() => {
     if (!loading && !saving && !editor && detail && restoreDetailFocus.current) {
       restoreDetailFocus.current = false;
@@ -153,14 +157,24 @@ export function OccurrenceDetailPanel({
     try {
       await action();
       if (activeId.current === id) {
-        if (completion && callbacks.current.onCompletionChanged && detail) {
-          callbacks.current.onCompletionChanged(
-            id,
-            detail.occurrence.status === "completed" ? "pending" : "completed",
+        if (completion && detail) {
+          const status = detail.occurrence.status === "completed" ? "pending" : "completed";
+          setDetail((previous) =>
+            previous
+              ? {
+                  ...previous,
+                  occurrence: { ...previous.occurrence, status },
+                }
+              : previous,
           );
-        } else callbacks.current.onChanged?.();
-        restoreDetailFocus.current = true;
-        await load(id);
+          if (callbacks.current.onCompletionChanged)
+            callbacks.current.onCompletionChanged(id, status);
+          else callbacks.current.onChanged?.();
+        } else {
+          callbacks.current.onChanged?.();
+          restoreDetailFocus.current = true;
+          await load(id);
+        }
       }
     } catch (cause) {
       if (activeId.current === id) {
@@ -198,212 +212,251 @@ export function OccurrenceDetailPanel({
     }
   }
   return (
-    <Panel
-      open={effectiveId !== null}
-      title={editor ? "할 일 수정" : "할 일 상세"}
-      onClose={close}
-      onBeforeClose={beforeClose}
-    >
-      {!loading && detail?.occurrence.id === effectiveId ? notice : null}
-      {discard ? (
-        <section className={styles.inlineConfirm} role="alert">
-          <p>작성 중인 내용을 버릴까요?</p>
-          <div className={styles.actions}>
-            <Button
-              variant="secondary"
-              autoFocus
-              onClick={() => {
-                setDiscard(false);
-                discardAction.current = null;
-                targetId.current = effectiveId;
-              }}
-            >
-              계속 작성
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => {
-                dirty.current = false;
-                setDiscard(false);
-                if (discardAction.current) {
-                  discardAction.current();
-                  discardAction.current = null;
-                } else close();
-              }}
-            >
-              내용 버리기
-            </Button>
-          </div>
-        </section>
-      ) : null}
-      {loading ? (
-        <p className={styles.skeleton} role="status">
-          불러오는 중
-        </p>
-      ) : null}
-      {error ? (
-        <div role="alert" className={styles.error}>
-          {error}
-          {!detail ? (
-            <Button
-              variant="secondary"
-              onClick={() => effectiveId !== null && void load(effectiveId)}
-            >
-              다시 시도
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-      {!loading && detail && detail.occurrence.id === effectiveId && editor ? (
-        <TaskEditor
-          key={`${effectiveId}-edit`}
-          initial={editor}
-          editing
-          onBusyChange={(busy) => {
-            lock.current = busy;
-          }}
-          onDirtyChange={(value) => {
-            dirty.current = value;
-          }}
-          onCancel={() => {
-            if (dirty.current) {
-              discardAction.current = finishEditing;
-              setDiscard(true);
-            } else finishEditing();
-          }}
-          onSave={async (values) => {
-            if (demo) demoUpdateTask(detail.occurrence.task_id, values);
-            else
-              await updateTask({
-                taskId: detail.occurrence.task_id,
-                ...values,
-                dueTime: values.dueTime || null,
-              });
-            dirty.current = false;
-            finishEditing();
-            callbacks.current.onChanged?.();
-            if (effectiveId !== null) await load(effectiveId);
-          }}
-        />
-      ) : null}
-      {!loading && detail && detail.occurrence.id === effectiveId && !editor ? (
-        <>
-          <div className={styles.detailHeader}>
-            <div className={styles.detailTop}>
-              <span className={styles.status}>
-                {detail.owner.id === viewer ? "내 할 일" : `${detail.owner.displayName}의 할 일`}
-              </span>
-              {detail.permissions.canEdit ? (
-                <details className={styles.more}>
-                  <summary aria-label="할 일 메뉴">
-                    <MoreHorizontal size={20} />
-                  </summary>
-                  <div className={styles.menu}>
-                    <button disabled={saving} onClick={() => void beginEdit()}>
-                      수정
-                    </button>
-                    <button className={styles.danger} onClick={() => setDeleteConfirm(true)}>
-                      삭제
-                    </button>
-                  </div>
-                </details>
-              ) : null}
-            </div>
-            <h3 ref={detailHeading} tabIndex={-1} className={styles.detailTitle}>
-              {detail.occurrence.title_snapshot}
-            </h3>
-            <div className={styles.detailMeta}>
-              <span>{detail.occurrence.occurrence_date}</span>
-              {detail.occurrence.due_time ? (
-                <span>{detail.occurrence.due_time.slice(0, 5)}</span>
-              ) : null}
-              <span>{detail.occurrence.status === "completed" ? "완료" : "진행 중"}</span>
-              {detail.taskDeleted ? <span>삭제된 할 일 · 기록만 보기</span> : null}
-            </div>
-            {detail.permissions.canComplete ? (
+    <>
+      <Panel
+        open={effectiveId !== null}
+        title={editor ? "할 일 수정" : "할 일 상세"}
+        onClose={close}
+        onBeforeClose={beforeClose}
+      >
+        {!loading && detail?.occurrence.id === effectiveId ? notice : null}
+        {discard ? (
+          <section className={styles.inlineConfirm} role="alert">
+            <p>작성 중인 내용을 버릴까요?</p>
+            <div className={styles.actions}>
               <Button
                 variant="secondary"
-                className={styles.loadMore}
-                loading={saving}
-                onClick={() =>
-                  void mutation(async () => {
-                    if (demo) {
-                      if (demoToggleOccurrence(detail.occurrence.id).firstCompletion)
-                        setFeedback("완료 · 펫이 1포인트 성장했어요");
-                    } else if (detail.occurrence.status === "completed")
-                      await reopenOccurrence(detail.occurrence.id);
-                    else {
-                      const result = await completeOccurrence(detail.occurrence.id);
-                      if (result.firstCompletion)
-                        setFeedback(`완료 · 펫이 ${result.rewardPoints}포인트 성장했어요`);
-                    }
-                  }, true)
-                }
+                autoFocus
+                onClick={() => {
+                  setDiscard(false);
+                  discardAction.current = null;
+                  targetId.current = effectiveId;
+                }}
               >
-                {detail.occurrence.status === "completed" ? "완료 취소" : "완료하기"}
+                계속 작성
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => {
+                  dirty.current = false;
+                  setDiscard(false);
+                  if (discardAction.current) {
+                    discardAction.current();
+                    discardAction.current = null;
+                  } else close();
+                }}
+              >
+                내용 버리기
+              </Button>
+            </div>
+          </section>
+        ) : null}
+        {loading ? <LoadingIndicator label="할 일 불러오는 중" /> : null}
+        {error ? (
+          <div role="alert" className={styles.error}>
+            {error}
+            {!detail ? (
+              <Button
+                variant="secondary"
+                onClick={() => effectiveId !== null && void load(effectiveId)}
+              >
+                다시 시도
               </Button>
             ) : null}
           </div>
-          {deleteConfirm ? (
-            <section className={styles.inlineConfirm}>
-              <p>
-                ‘{detail.occurrence.title_snapshot}’
-                {detail.occurrence.recurrence_snapshot !== "none" ? " 반복 일정 전체를" : "을"}{" "}
-                삭제할까요? 완료한 기록과 포인트는 남습니다.
-              </p>
-              <div className={styles.actions}>
-                <Button
-                  variant="secondary"
-                  autoFocus
-                  disabled={saving}
-                  onClick={() => setDeleteConfirm(false)}
-                >
-                  취소
-                </Button>
-                <Button
-                  variant="danger"
-                  loading={saving}
-                  onClick={() =>
-                    void mutation(async () => {
-                      if (demo) demoDeleteTask(detail.occurrence.task_id);
-                      else await deleteTask(detail.occurrence.task_id);
-                      setDeleteConfirm(false);
-                      dirty.current = false;
-                      callbacks.current.onClose();
-                    })
-                  }
-                >
-                  할 일 삭제
-                </Button>
-              </div>
-            </section>
-          ) : null}
-          <EncouragementThread
-            key={effectiveId}
-            occurrenceId={detail.occurrence.id}
-            summary={detail.summary}
-            initialDetail={detail}
-            canCompose={false}
-            targetEncouragementId={encouragementId}
-            onDirtyChange={(value) => {
-              dirty.current = value;
-            }}
+        ) : null}
+        {!loading && detail && detail.occurrence.id === effectiveId && editor ? (
+          <TaskEditor
+            key={`${effectiveId}-edit`}
+            initial={editor}
+            editing
             onBusyChange={(busy) => {
               lock.current = busy;
             }}
-            onChanged={(fresh) => {
-              setDetail(fresh);
+            onDirtyChange={(value) => {
+              dirty.current = value;
+            }}
+            onCancel={() => {
+              if (dirty.current) {
+                discardAction.current = finishEditing;
+                setDiscard(true);
+              } else finishEditing();
+            }}
+            onSave={async (values) => {
+              if (demo) demoUpdateTask(detail.occurrence.task_id, values);
+              else
+                await updateTask({
+                  taskId: detail.occurrence.task_id,
+                  ...values,
+                  dueTime: values.dueTime || null,
+                });
+              dirty.current = false;
+              showFeedback({
+                kind: "success",
+                title: "할 일을 수정했어요",
+                description: demo ? "미리보기" : undefined,
+              });
+              finishEditing();
               callbacks.current.onChanged?.();
+              if (effectiveId !== null) await load(effectiveId);
             }}
           />
-        </>
-      ) : null}
-      {feedback ? (
-        <p role="status" className={styles.notice}>
-          {feedback}
-          {demo ? " · 미리보기" : ""}
-        </p>
-      ) : null}
-    </Panel>
+        ) : null}
+        {!loading && detail && detail.occurrence.id === effectiveId && !editor ? (
+          <>
+            <div className={styles.detailHeader}>
+              <div className={styles.detailTop}>
+                <span className={styles.status}>
+                  {detail.owner.id === viewer ? "내 할 일" : `${detail.owner.displayName}의 할 일`}
+                </span>
+                {detail.permissions.canEdit ? (
+                  <details className={styles.more}>
+                    <summary aria-label="할 일 메뉴">
+                      <MoreHorizontal size={20} />
+                    </summary>
+                    <div className={styles.menu}>
+                      <button disabled={saving} onClick={() => void beginEdit()}>
+                        수정
+                      </button>
+                      <button className={styles.danger} onClick={() => setDeleteConfirm(true)}>
+                        삭제
+                      </button>
+                    </div>
+                  </details>
+                ) : null}
+              </div>
+              <h3 ref={detailHeading} tabIndex={-1} className={styles.detailTitle}>
+                {detail.occurrence.title_snapshot}
+              </h3>
+              <div className={styles.detailMeta}>
+                <span>{detail.occurrence.occurrence_date}</span>
+                {detail.occurrence.due_time ? (
+                  <span>{detail.occurrence.due_time.slice(0, 5)}</span>
+                ) : null}
+                <span>{detail.occurrence.status === "completed" ? "완료" : "진행 중"}</span>
+                {detail.taskDeleted ? <span>삭제된 할 일 · 기록만 보기</span> : null}
+              </div>
+              {detail.permissions.canComplete ? (
+                <button
+                  type="button"
+                  className={`${styles.toggle} ${styles.loadMore}`}
+                  aria-disabled={saving}
+                  aria-busy={saving}
+                  aria-pressed={detail.occurrence.status === "completed"}
+                  onClick={() =>
+                    void mutation(async () => {
+                      dismissFeedback();
+                      const completed = detail.occurrence.status !== "completed";
+                      let rewardPoints: number | undefined;
+                      let completedAt: string | null = null;
+                      if (demo) {
+                        if (demoToggleOccurrence(detail.occurrence.id).firstCompletion)
+                          rewardPoints = 1;
+                        completedAt = demoGetDetail(detail.occurrence.id).occurrence.completed_at;
+                      } else if (!completed) await reopenOccurrence(detail.occurrence.id);
+                      else {
+                        const result = await completeOccurrence(detail.occurrence.id);
+                        completedAt = result.completedAt;
+                        if (result.firstCompletion && result.rewardGranted)
+                          rewardPoints = result.rewardPoints;
+                      }
+                      if (activeId.current !== detail.occurrence.id) return;
+                      setDetail((previous) =>
+                        previous
+                          ? {
+                              ...previous,
+                              occurrence: { ...previous.occurrence, completed_at: completedAt },
+                            }
+                          : previous,
+                      );
+                      if (completed) setCompletionVersion((version) => version + 1);
+                      showFeedback({
+                        kind: completed ? "completion" : "info",
+                        title: completed ? "할 일 하나, 해냈어요" : "완료를 취소했어요",
+                        description: demo ? "미리보기" : undefined,
+                        rewardPoints,
+                      });
+                    }, true)
+                  }
+                >
+                  {saving ? (
+                    <LoaderCircle className={styles.pendingSpinner} size={19} aria-hidden="true" />
+                  ) : detail.occurrence.status === "completed" ? (
+                    <Check
+                      key={`check-${completionVersion}`}
+                      className={completionVersion ? styles.completionCheck : undefined}
+                      size={19}
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                  {detail.occurrence.status === "completed" ? "완료 취소" : "완료하기"}
+                  {detail.occurrence.status === "completed" && completionVersion > 0 ? (
+                    <CompletionBurst key={`burst-${completionVersion}`} />
+                  ) : null}
+                </button>
+              ) : null}
+            </div>
+            {deleteConfirm ? (
+              <section className={styles.inlineConfirm}>
+                <p>
+                  ‘{detail.occurrence.title_snapshot}’
+                  {detail.occurrence.recurrence_snapshot !== "none" ? " 반복 일정 전체를" : "을"}{" "}
+                  삭제할까요? 완료한 기록과 포인트는 남습니다.
+                </p>
+                <div className={styles.actions}>
+                  <Button
+                    variant="secondary"
+                    autoFocus
+                    disabled={saving}
+                    onClick={() => setDeleteConfirm(false)}
+                  >
+                    취소
+                  </Button>
+                  <Button
+                    variant="danger"
+                    loading={saving}
+                    onClick={() =>
+                      void mutation(async () => {
+                        if (demo) demoDeleteTask(detail.occurrence.task_id);
+                        else await deleteTask(detail.occurrence.task_id);
+                        showFeedback({
+                          kind: "success",
+                          title: "할 일을 삭제했어요",
+                          description: demo ? "미리보기" : undefined,
+                        });
+                        setDeleteConfirm(false);
+                        dirty.current = false;
+                        callbacks.current.onClose();
+                      })
+                    }
+                  >
+                    할 일 삭제
+                  </Button>
+                </div>
+              </section>
+            ) : null}
+            <EncouragementThread
+              key={effectiveId}
+              occurrenceId={detail.occurrence.id}
+              summary={detail.summary}
+              initialDetail={detail}
+              canCompose={false}
+              targetEncouragementId={encouragementId}
+              onDirtyChange={(value) => {
+                dirty.current = value;
+              }}
+              onBusyChange={(busy) => {
+                lock.current = busy;
+              }}
+              onChanged={(fresh) => {
+                setDetail(fresh);
+                callbacks.current.onChanged?.();
+              }}
+            />
+          </>
+        ) : null}
+      </Panel>
+      <FeedbackToast feedback={feedback} onDismiss={dismissFeedback} />
+    </>
   );
 }

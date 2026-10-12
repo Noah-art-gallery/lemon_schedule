@@ -31,9 +31,13 @@ test("추가와 완료 후 재완료는 포인트를 다시 지급하지 않는�
   const undo = page.getByRole("button", { name: "레몬 물 주기 완료 취소", exact: true });
   await expect(undo).toHaveText("완료됨");
   await expect(undo).toBeFocused();
+  await expect(page.getByRole("status")).toContainText("+1 성장");
   expect(await page.locator("[data-occurrence-trigger]").allTextContents()).toEqual(order);
   await undo.click();
+  await expect(page.getByRole("status")).toContainText("완료를 취소했어요");
   await page.getByRole("button", { name: "레몬 물 주기 완료", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("해냈어요");
+  await expect(page.getByRole("status")).not.toContainText("성장");
   await page.getByRole("link", { name: "펫", exact: true }).click();
   await expect(page.getByRole("heading", { name: "3 포인트" })).toBeVisible();
 });
@@ -88,6 +92,7 @@ test("친구 하루에 응원 하나를 보내고 같은 응원을 수정한다"
   await expect(sent).toContainText("보냄");
   await expect(sent).toContainText("끝까지 풀었네!");
   await expect(composer).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("응원을 보냈어요");
   await card.getByRole("button", { name: "수정", exact: true }).click();
   await expect(composer.getByLabel("응원글")).toHaveValue("끝까지 풀었네!");
   await composer.getByRole("button", { name: "레몬", exact: true }).click();

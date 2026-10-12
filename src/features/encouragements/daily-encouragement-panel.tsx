@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/feedback";
 import { ProfileAvatar } from "@/components/ui/profile-avatar";
 import { useAuth } from "@/features/auth/auth-provider";
 import { InboxReadReceipt } from "@/features/notifications/inbox-read-receipt";
@@ -56,7 +57,7 @@ export function DailyEncouragementPanel({
   }, [id, demo, user?.id, reload]);
   return (
     <Panel open title="받은 하루 응원" onClose={onClose}>
-      {loading ? <p role="status">응원을 불러오는 중</p> : null}
+      {loading ? <LoadingIndicator label="응원을 불러오는 중" /> : null}
       {error ? (
         <div role="alert">
           <p>{error}</p>

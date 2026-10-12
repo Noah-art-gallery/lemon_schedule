@@ -2,6 +2,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FeedbackToast, LoadingIndicator, useFeedback } from "@/components/ui/feedback";
 import { AppError } from "@/lib/errors";
 import { useAuth } from "@/features/auth/auth-provider";
 import { getOccurrenceDetail } from "@/features/tasks/task-service";
@@ -96,6 +97,7 @@ function ThreadState({
   const [composing, setComposing] = useState(false);
   const [detail, setDetail] = useState(initialDetail ?? null);
   const [loading, setLoading] = useState(false);
+  const { feedback, showFeedback, dismissFeedback } = useFeedback();
   const [error, setError] = useState("");
   const [forbidden, setForbidden] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
@@ -258,6 +260,7 @@ function ThreadState({
         : await getOccurrenceDetail({ occurrenceId });
       if (!alive.current || version !== generation.current) return;
       setDetail(fresh);
+      showFeedback({ kind: "success", title: "응원을 삭제했어요" });
       setDeleting(null);
       setComposing(false);
       setComposerVersion((v) => v + 1);
@@ -283,6 +286,7 @@ function ThreadState({
   const visible = detail?.encouragements.filter((item) => item.visibility === "visible") ?? [];
   return (
     <div ref={root} className={styles.thread}>
+      <FeedbackToast feedback={feedback} onDismiss={dismissFeedback} />
       <div className={styles.threadActions}>
         <button
           ref={trigger}
@@ -322,11 +326,7 @@ function ThreadState({
         role="region"
         aria-label="응원 내역"
       >
-        {loading ? (
-          <p role="status" className={styles.status}>
-            응원 불러오는 중
-          </p>
-        ) : null}
+        {loading ? <LoadingIndicator compact label="응원 불러오는 중" /> : null}
         {error ? (
           <div className={styles.error} role="alert">
             {error}

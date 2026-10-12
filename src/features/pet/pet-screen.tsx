@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeading } from "@/components/layout/page-heading";
 import { Button } from "@/components/ui/button";
+import { FeedbackToast, LoadingIndicator, useFeedback } from "@/components/ui/feedback";
 import { CharacterSprite } from "@/components/ui/character-sprite";
 import { Panel } from "@/components/ui/panel";
 import { StatePanel } from "@/components/ui/state-panel";
@@ -52,7 +53,7 @@ export function PetScreen() {
   }, [discard]);
   const [saving, setSaving] = useState(false);
   const pending = useRef(false);
-  const [notice, setNotice] = useState("");
+  const { feedback, showFeedback, dismissFeedback } = useFeedback();
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -123,7 +124,10 @@ export function PetScreen() {
       setImageUrl(url);
       setImageError("");
       close();
-      setNotice(demo ? "미리보기에 반영했어요" : "펫 그림을 저장했어요");
+      showFeedback({
+        kind: "success",
+        title: demo ? "미리보기에 반영했어요" : "펫 그림을 저장했어요",
+      });
     } catch (cause) {
       setError(errorText(cause, "펫 그림을 저장하지 못했어요"));
     } finally {
@@ -140,7 +144,10 @@ export function PetScreen() {
       const next = { ...pet.decorations, ...change };
       const saved = demo ? demoSaveDecorations(next) : await savePetDecorations(next);
       setPet((current) => (current ? { ...current, decorations: saved } : current));
-      setNotice(demo ? "미리보기에 반영했어요" : "꾸미기를 저장했어요");
+      showFeedback({
+        kind: "success",
+        title: demo ? "미리보기에 반영했어요" : "꾸미기를 저장했어요",
+      });
     } catch (cause) {
       setError(errorText(cause, "꾸미기를 저장하지 못했어요"));
     } finally {
@@ -156,11 +163,7 @@ export function PetScreen() {
   return (
     <AppShell>
       <PageHeading title="펫" />
-      {notice ? (
-        <p className="inline-alert" role="status">
-          {notice}
-        </p>
-      ) : null}
+      <FeedbackToast feedback={feedback} onDismiss={dismissFeedback} />
       {error && !drawing ? (
         <p role="alert" className="form-error">
           {error}
@@ -258,6 +261,7 @@ export function PetScreen() {
           </section>
           <section className={styles.decorations} aria-labelledby="decoration-heading">
             <h2 id="decoration-heading">꾸미기</h2>
+            {saving && !drawing ? <LoadingIndicator compact label="꾸미기 저장 중" /> : null}
             <label className={styles.setting}>
               <span>
                 <strong>그리기 붓 색상</strong>

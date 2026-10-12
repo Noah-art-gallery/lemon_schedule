@@ -65,8 +65,10 @@ it("requires a sticker and leaves a clear saved result after a single in-flight 
   fireEvent.submit(form);
   fireEvent.submit(form);
   expect(saveDailyEncouragement).toHaveBeenCalledTimes(1);
+  expect(screen.queryByText("응원을 보냈어요")).not.toBeInTheDocument();
   await act(async () => resolve(sent));
   expect(screen.queryByRole("form")).not.toBeInTheDocument();
+  expect(screen.getByText("응원을 보냈어요")).toBeVisible();
   expect(screen.getByLabelText("내가 보낸 응원")).toHaveTextContent("보냄");
   expect(screen.getByLabelText("내가 보낸 응원")).toHaveTextContent("잘했어");
   fireEvent.click(screen.getByRole("button", { name: "수정" }));
@@ -118,6 +120,7 @@ it("requires confirmation before cancelling and returns to one send button", asy
   );
   await waitFor(() => expect(screen.queryByLabelText("내가 보낸 응원")).not.toBeInTheDocument());
   expect(deleteDailyEncouragement).toHaveBeenCalledWith(3);
+  expect(screen.getByText("응원을 취소했어요")).toBeVisible();
   expect(screen.getAllByRole("button", { name: "응원 보내기" })).toHaveLength(1);
 });
 

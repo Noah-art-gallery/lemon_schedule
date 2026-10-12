@@ -335,20 +335,6 @@
   font-size: 13px;
   color: #666d5e;
 }
-.toast {
-  position: fixed;
-  bottom: 100px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #283122;
-  color: white;
-  padding: 12px 20px;
-  border-radius: 14px;
-  z-index: 40;
-  max-width: calc(100% - 32px);
-  width: max-content;
-  font-size: 14px;
-}
 .loadMore {
   white-space: normal;
   overflow-wrap: anywhere;
@@ -398,9 +384,6 @@
   }
   .reaction {
     padding: 8px 10px;
-  }
-  .toast {
-    bottom: 90px;
   }
 }
 
@@ -624,4 +607,124 @@
   flex: 1;
   min-width: 0;
   margin: 0;
+}
+
+.row {
+  transition:
+    background-color 240ms ease,
+    border-color 240ms ease;
+}
+.row[data-completed="true"] {
+  background: #f7faf0;
+  border-color: #d9e4c9;
+}
+.toggle {
+  position: relative;
+}
+.toggle[aria-pressed="true"] {
+  background: #eaf2dd;
+  border-color: #d2dfbb;
+  color: #45602c;
+}
+.completionCheck {
+  animation: completion-check 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.pendingSpinner {
+  animation: pending-spin 900ms linear infinite;
+}
+.completionBurst {
+  position: absolute;
+  inset: -10px;
+  pointer-events: none;
+  border: 2px solid #d9be35;
+  border-radius: 18px;
+  animation: completion-ring 640ms ease-out both;
+}
+.completionBurst i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: #d9b52d;
+  animation: completion-particle 640ms ease-out both;
+}
+.completionBurst i:nth-child(1) {
+  --particle-x: -38px;
+  --particle-y: -24px;
+}
+.completionBurst i:nth-child(2) {
+  --particle-x: 0px;
+  --particle-y: -35px;
+  background: #83a85a;
+}
+.completionBurst i:nth-child(3) {
+  --particle-x: 38px;
+  --particle-y: -24px;
+}
+.completionBurst i:nth-child(4) {
+  --particle-x: -40px;
+  --particle-y: 24px;
+  background: #83a85a;
+}
+.completionBurst i:nth-child(5) {
+  --particle-x: 0px;
+  --particle-y: 35px;
+}
+.completionBurst i:nth-child(6) {
+  --particle-x: 40px;
+  --particle-y: 24px;
+  background: #83a85a;
+}
+@keyframes completion-check {
+  0% {
+    transform: scale(0.4) rotate(-20deg);
+  }
+  55% {
+    transform: scale(1.25) rotate(5deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+@keyframes completion-ring {
+  0% {
+    opacity: 0.65;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.1);
+  }
+}
+@keyframes completion-particle {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.4);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--particle-x), var(--particle-y)) rotate(100deg) scale(0.5);
+  }
+}
+@keyframes pending-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .row {
+    transition: none;
+  }
+  .completionCheck,
+  .pendingSpinner {
+    animation: none;
+  }
+  .completionBurst {
+    display: none;
+  }
 }

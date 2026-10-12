@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeading } from "@/components/layout/page-heading";
 import { Button } from "@/components/ui/button";
+import { FeedbackToast, useFeedback } from "@/components/ui/feedback";
 import { StatePanel } from "@/components/ui/state-panel";
 import { useAuth } from "@/features/auth/auth-provider";
 import { OccurrenceDetailPanel } from "@/features/tasks/occurrence-detail-panel";
@@ -37,6 +38,7 @@ function NotificationContent() {
   const [more, setMore] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const { feedback, showFeedback, dismissFeedback } = useFeedback();
   const [reading, setReading] = useState(false);
   const [selected, setSelected] = useState<InboxItem | null>(null);
   const [resolved, setResolved] = useState(false);
@@ -187,8 +189,10 @@ function NotificationContent() {
       if (throughId) {
         if (demo) demoMarkAllInboxRead(throughId);
         else await markAllInboxRead({ throughId });
-        if (version === generation.current)
+        if (version === generation.current) {
+          showFeedback({ kind: "success", title: "소식을 모두 읽음으로 표시했어요" });
           window.dispatchEvent(new Event("lemon:notifications-changed"));
+        }
       } else if (version === generation.current) await load();
     } catch (cause) {
       if (version === generation.current)
@@ -233,6 +237,7 @@ function NotificationContent() {
   const visible = loadedScope === `${account}:${filter}` ? items : [];
   return (
     <AppShell>
+      <FeedbackToast feedback={feedback} onDismiss={dismissFeedback} />
       <PageHeading
         title="소식"
         action={

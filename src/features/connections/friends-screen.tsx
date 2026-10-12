@@ -6,6 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeading } from "@/components/layout/page-heading";
 import { Button } from "@/components/ui/button";
+import { FeedbackToast, LoadingIndicator, useFeedback } from "@/components/ui/feedback";
 import { Field } from "@/components/ui/field";
 import { ProfileAvatar } from "@/components/ui/profile-avatar";
 import { Panel } from "@/components/ui/panel";
@@ -113,6 +114,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const { feedback, showFeedback, dismissFeedback } = useFeedback();
   const [, setActivity] = useState<SocialActivityItem[]>([]);
   const [, setCursor] = useState<CompletionCursor | null>(null);
   const [friendLimit, setFriendLimit] = useState(8);
@@ -775,7 +777,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
       onSuccess?.();
       if (/^(accept|reject)-/.test(key)) requestFocus.current = "incoming";
       if (key.startsWith("cancel-")) requestFocus.current = "outgoing";
-      setNotice(success);
+      showFeedback({ kind: "success", title: success });
       try {
         await refreshConnections();
       } catch (cause) {
@@ -875,6 +877,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
   }
   return (
     <AppShell>
+      <FeedbackToast feedback={feedback} onDismiss={dismissFeedback} />
       <PageHeading
         title="친구"
         action={
@@ -951,7 +954,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
               </Button>
             ) : null}
           </section>
-          {loading && !data.friends.length ? <p role="status">친구를 불러오는 중</p> : null}
+          {loading && !data.friends.length ? <LoadingIndicator label="친구를 불러오는 중" /> : null}
           {error ? (
             <div role="alert">
               <p>{error}</p>
@@ -1036,7 +1039,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
               onBusyChange={(busy) => dailyBusy(friend.id, busy)}
             />
           ) : null}
-          {friendLoading ? <p role="status">불러오는 중</p> : null}
+          {friendLoading ? <LoadingIndicator label="할 일을 불러오는 중" /> : null}
           {friendError ? (
             <div role="alert" className={styles.error}>
               <p>{friendError}</p>
@@ -1126,14 +1129,18 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
           <section>
             <h3>내 초대 코드</h3>
             <div className={styles.code}>
-              <strong>{ownCode || "불러오는 중"}</strong>
+              {ownCode ? (
+                <strong>{ownCode}</strong>
+              ) : (
+                <LoadingIndicator compact label="초대 코드를 불러오는 중" />
+              )}
               <Button
                 variant="secondary"
                 disabled={!ownCode}
                 onClick={() =>
                   void navigator.clipboard
                     .writeText(ownCode)
-                    .then(() => setNotice("코드를 복사했어요"))
+                    .then(() => showFeedback({ kind: "success", title: "코드를 복사했어요" }))
                     .catch(() => setActionError("복사하지 못했어요. 코드를 직접 복사해 주세요"))
                 }
               >

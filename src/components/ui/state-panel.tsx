@@ -1,6 +1,8 @@
 import { AlertCircle, Inbox, LoaderCircle, LockKeyhole, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { LoadingIndicator } from "@/components/ui/feedback";
+
 type StateKind = "empty" | "error" | "forbidden" | "loading";
 
 const icons: Record<StateKind, LucideIcon> = {
@@ -22,10 +24,16 @@ export function StatePanel({ kind, title, description, action }: StatePanelProps
 
   return (
     <section className="state-panel" aria-live={kind === "error" ? "assertive" : "polite"}>
-      <span className={`state-panel__icon state-panel__icon--${kind}`} aria-hidden="true">
-        <Icon size={24} className={kind === "loading" ? "spin" : ""} />
-      </span>
-      <h2>{title}</h2>
+      {kind === "loading" ? (
+        <LoadingIndicator label={title} />
+      ) : (
+        <>
+          <span className={`state-panel__icon state-panel__icon--${kind}`} aria-hidden="true">
+            <Icon size={24} />
+          </span>
+          <h2>{title}</h2>
+        </>
+      )}
       {description ? <p>{description}</p> : null}
       {action ? <div className="state-panel__action">{action}</div> : null}
     </section>
