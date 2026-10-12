@@ -11,10 +11,10 @@ export function TopBar({ notificationCount = 0 }: TopBarProps) {
   return (
     <header className="top-bar">
       <Brand />
-      <Link href="/notifications" className="icon-button" aria-label="알림 열기">
+      <Link href="/notifications" className="icon-button" aria-label="소식 열기">
         <Bell size={21} aria-hidden="true" />
         {notificationCount > 0 ? (
-          <span className="notification-dot" aria-label={`읽지 않은 알림 ${notificationCount}개`}>
+          <span className="notification-dot" aria-label={`읽지 않은 소식 ${notificationCount}개`}>
             {notificationCount > 9 ? "9+" : notificationCount}
           </span>
         ) : null}

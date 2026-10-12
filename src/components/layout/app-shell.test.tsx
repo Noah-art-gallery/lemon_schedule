@@ -20,11 +20,11 @@ describe("AppShell", () => {
     );
 
     expect(screen.getByRole("navigation", { name: "주요 메뉴" })).toBeVisible();
-    expect(screen.getByRole("link", { name: "홈" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "할 일" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: "친구" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "펫" })).toHaveAttribute("href", "/pet");
     expect(screen.getByRole("link", { name: "내 정보" })).toHaveAttribute("href", "/profile");
-    expect(screen.getByRole("link", { name: "알림 열기" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "소식 열기" })).toHaveAttribute(
       "href",
       "/notifications",
     );

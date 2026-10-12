@@ -1,9 +1,10 @@
-import type { ButtonHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, Ref } from "react";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 type ButtonSize = "sm" | "md" | "lg";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  ref?: Ref<HTMLButtonElement>;
   variant?: ButtonVariant;
   size?: ButtonSize;
   loading?: boolean;
@@ -18,6 +19,7 @@ export function Button({
   className = "",
   children,
   disabled,
+  type = "button",
   ...props
 }: ButtonProps) {
   const classes = [
@@ -31,9 +33,15 @@ export function Button({
     .join(" ");
 
   return (
-    <button className={classes} disabled={disabled || loading} aria-busy={loading} {...props}>
+    <button
+      type={type}
+      className={classes}
+      disabled={disabled || loading}
+      aria-busy={loading}
+      {...props}
+    >
       {loading ? <span className="button__spinner" aria-hidden="true" /> : null}
-      <span>{loading ? "잠시만요" : children}</span>
+      {children}
     </button>
   );
 }
