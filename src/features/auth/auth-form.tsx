@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { Brand } from "@/components/layout/brand";
 import { Button } from "@/components/ui/button";
@@ -13,10 +13,12 @@ import { disableNativePush } from "@/features/push/push-service";
 import { useAuth } from "./auth-provider";
 
 import { signIn, signUp } from "./auth-service";
+import styles from "./auth-form.module.css";
 
 export function AuthForm({ mode }: { mode: "login" | "signup" }) {
   const router = useRouter();
   const { status } = useAuth();
+  const pending = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -26,7 +28,8 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (status !== "unauthenticated" && status !== "demo") return;
+    if (pending.current || (status !== "unauthenticated" && status !== "demo")) return;
+    pending.current = true;
     setLoading(true);
     setError("");
     const data = new FormData(event.currentTarget);
@@ -50,6 +53,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
     } catch (cause) {
       setError(cause instanceof AppError ? cause.message : "입력값을 다시 확인해 주세요.");
     } finally {
+      pending.current = false;
       setLoading(false);
     }
   }
@@ -63,17 +67,11 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
     );
   }
   return (
-    <main className="auth-page">
-      <section className="auth-card" aria-labelledby="auth-title">
+    <main className={styles.page}>
+      <section className={styles.card} aria-labelledby="auth-title">
         <Brand />
-        <div className="auth-card__heading">
-          <p className="eyebrow">{signup ? "WELCOME" : "WELCOME BACK"}</p>
-          <h1 id="auth-title">{signup ? "레몬 펫과 시작해요" : "다시 만나서 반가워요"}</h1>
-          <p>
-            {signup
-              ? "계정을 만들고 친구와 오늘의 할 일을 나눠보세요."
-              : "오늘의 작은 약속을 이어가요."}
-          </p>
+        <div className={styles.heading}>
+          <h1 id="auth-title">{signup ? "회원가입" : "로그인"}</h1>
         </div>
         <form className="form-stack" onSubmit={submit}>
           {signup ? <Field label="닉네임" name="displayName" maxLength={40} required /> : null}
@@ -83,6 +81,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
             name="password"
             type="password"
             minLength={8}
+            hint={signup ? "8자 이상" : undefined}
             autoComplete={signup ? "new-password" : "current-password"}
             required
           />
@@ -91,7 +90,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
               label="시간대"
               name="timeZone"
               defaultValue={getDeviceTimeZone()}
-              hint="기기 시간대를 제안했어요. 현재 지역과 맞는지 확인해 주세요."
+              hint="할 일의 날짜를 정하는 기준"
               required
             />
           ) : null}
@@ -104,7 +103,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
             {signup ? "회원가입" : "로그인"}
           </Button>
         </form>
-        <p className="auth-card__switch">
+        <p className={styles.switch}>
           {signup ? "이미 계정이 있나요?" : "처음 오셨나요?"}{" "}
           <Link
             href={signup ? "/login" : "/signup"}

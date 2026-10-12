@@ -1,0 +1,151 @@
+.settings {
+  max-width: 720px;
+  display: grid;
+  gap: 20px;
+}
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 0 20px;
+}
+.avatar {
+  flex: 0 0 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: var(--lemon-100);
+  font-size: 22px;
+  font-weight: 700;
+}
+.identityText {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.identity h2 {
+  margin: 0;
+  font-size: 22px;
+}
+.identity p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.group {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow: hidden;
+}
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px;
+}
+.row > div {
+  min-width: 0;
+}
+.row h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.row p {
+  margin: 5px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.row .code {
+  color: var(--ink);
+  font-size: 20px;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  user-select: all;
+}
+.note {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0 0 16px;
+}
+.group > .note,
+.group > [role="alert"] {
+  margin: 0 20px 16px;
+}
+.action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  border: 0;
+  padding: 16px 20px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.action + .action {
+  border-top: 1px solid var(--line);
+}
+.action:hover {
+  background: var(--cream);
+}
+.action span:first-of-type {
+  flex: 1;
+}
+.action:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.count {
+  color: var(--muted);
+}
+.blocked {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.blocked li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.blocked li span {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.empty {
+  padding: 24px 0;
+  color: var(--muted);
+}
+.discard {
+  display: grid;
+  gap: 16px;
+}
+@media (max-width: 480px) {
+  .row {
+    padding: 16px;
+    flex-wrap: wrap;
+  }
+  .action {
+    padding: 16px;
+  }
+  .group > .note,
+  .group > [role="alert"] {
+    margin-inline: 16px;
+  }
+}
+
+.settingsForm[hidden] {
+  display: none;
+}
