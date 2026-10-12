@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, expect, it, vi } from "vitest";
 import { HomeScreen } from "./home-screen";
 import { demoGetDetail } from "@/features/tasks/demo-task-store";
-import { listOccurrenceWindow } from "@/features/tasks/task-service";
+import { listOccurrenceWindow, listOwnHistory } from "@/features/tasks/task-service";
 import { AppError } from "@/lib/errors";
 const auth = vi.hoisted(() => ({ user: { id: "owner" } }));
 vi.mock("@/features/auth/auth-provider", () => ({
@@ -14,6 +14,7 @@ vi.mock("@/components/layout/app-shell", () => ({
 vi.mock("@/features/tasks/task-service", async (original) => ({
   ...(await original<typeof import("@/features/tasks/task-service")>()),
   listOccurrenceWindow: vi.fn(),
+  listOwnHistory: vi.fn(),
 }));
 vi.mock("@/features/encouragements/encouragement-service", () => ({
   listEncouragementSummaries: vi.fn().mockResolvedValue({ items: [] }),
@@ -181,3 +182,96 @@ it("cancels a queued return focus when the account's screen unmounts", async () 
     queue.mockRestore();
   }
 });
+it("refreshes through the expanded history boundary and keeps the next cursor after new records arrive", async () => {
+  const timestamp = "2026-10-12T10:00:00.123456+00:00";
+  const item = (id: number, title: string) => {
+    const detail = demoGetDetail(1);
+    return {
+      occurrence: {
+        ...detail.occurrence,
+        id,
+        title_snapshot: title,
+        first_completed_at: timestamp,
+      },
+      taskDeleted: false,
+      summary: detail.summary,
+    };
+  };
+  const recent = [item(300, "최근 기록 300"), item(299, "최근 기록 299")];
+  const older = [item(200, "이전 기록 200"), item(199, "이전 기록 199")];
+  const newest = [item(400, "새 기록 400"), item(399, "새 기록 399")];
+  const cursor = (id: number) => ({ firstCompletedAt: timestamp, occurrenceId: id });
+  let refreshed = false;
+  vi.mocked(listOwnHistory).mockImplementation(async (input) => {
+    const id = input?.cursor?.occurrenceId;
+    if (!id)
+      return { items: refreshed ? newest : recent, nextCursor: cursor(refreshed ? 399 : 299) };
+    if (id === 399) return { items: recent, nextCursor: cursor(299) };
+    if (id === 299) return { items: older, nextCursor: cursor(199) };
+    return { items: [item(100, "더 오래된 기록 100")], nextCursor: null };
+  });
+  render(<HomeScreen />);
+  fireEvent.click(screen.getByRole("tab", { name: "기록" }));
+  fireEvent.click(await screen.findByRole("button", { name: "이전 기록 더 보기" }));
+  const trigger = await screen.findByRole("button", { name: /이전 기록 200/ });
+  trigger.focus();
+  fireEvent.click(trigger);
+  refreshed = true;
+  fireEvent.click(screen.getByRole("button", { name: "상세 변경 완료" }));
+  await screen.findByText("새 기록 400");
+  fireEvent.click(screen.getByRole("button", { name: "닫기" }));
+  expect(trigger).toBeInTheDocument();
+  expect(trigger).toHaveFocus();
+  expect(screen.getByText("최근 기록 300")).toBeInTheDocument();
+  expect(screen.getByText("이전 기록 199")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "이전 기록 더 보기" }));
+  expect(await screen.findByText("더 오래된 기록 100")).toBeInTheDocument();
+  expect(vi.mocked(listOwnHistory).mock.calls.at(-1)?.[0]?.cursor).toEqual(cursor(199));
+});
+it.each(["failure", "removed"])(
+  "does not restore stale history when an expanded refresh reports %s",
+  async (outcome) => {
+    const makeItem = (id: number, title: string, completed: string) => {
+      const detail = demoGetDetail(1);
+      return {
+        occurrence: {
+          ...detail.occurrence,
+          id,
+          title_snapshot: title,
+          first_completed_at: completed,
+        },
+        taskDeleted: false,
+        summary: detail.summary,
+      };
+    };
+    const recent = makeItem(300, "현재 기록", "2026-10-12T10:00:00Z");
+    const older = makeItem(200, "검증할 이전 기록", "2026-09-12T10:00:00Z");
+    let refreshing = false;
+    vi.mocked(listOwnHistory).mockImplementation(async (input) => {
+      if (!input?.cursor)
+        return {
+          items: [recent],
+          nextCursor: { firstCompletedAt: recent.occurrence.first_completed_at, occurrenceId: 300 },
+        };
+      if (refreshing && outcome === "failure")
+        throw new AppError("FORBIDDEN", "기록 접근 권한을 확인해 주세요");
+      return { items: refreshing ? [] : [older], nextCursor: null };
+    });
+    render(<HomeScreen />);
+    fireEvent.click(screen.getByRole("tab", { name: "기록" }));
+    fireEvent.click(await screen.findByRole("button", { name: "이전 기록 더 보기" }));
+    const trigger = await screen.findByRole("button", { name: /검증할 이전 기록/ });
+    trigger.focus();
+    fireEvent.click(trigger);
+    refreshing = true;
+    fireEvent.click(screen.getByRole("button", { name: "상세 변경 완료" }));
+    await waitFor(() => expect(trigger).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "닫기" }));
+    expect(screen.queryByText("검증할 이전 기록")).not.toBeInTheDocument();
+    if (outcome === "failure") {
+      expect(screen.getByRole("alert")).toHaveTextContent("기록 접근 권한을 확인해 주세요");
+      expect(screen.queryByText("현재 기록")).not.toBeInTheDocument();
+    } else expect(screen.getByText("현재 기록")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "이전 기록 더 보기" })).not.toBeInTheDocument();
+  },
+);

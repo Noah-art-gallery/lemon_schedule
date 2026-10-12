@@ -34,10 +34,17 @@ import {
 import { addUtcDays } from "@/features/tasks/recurrence";
 import type { TaskOccurrenceRow } from "@/lib/supabase/database.types";
 import type { CompletionCursor, EncouragementSummary, OwnHistoryItem } from "@/types/contracts";
+import { AppError } from "@/lib/errors";
 import { toDateKey, getDeviceTimeZone } from "@/lib/time";
 import styles from "@/features/tasks/task-experience.module.css";
 
 type Tab = "today" | "upcoming" | "history";
+function newerCursor(left: CompletionCursor, right: CompletionCursor) {
+  return (
+    left.firstCompletedAt > right.firstCompletedAt ||
+    (left.firstCompletedAt === right.firstCompletedAt && left.occurrenceId > right.occurrenceId)
+  );
+}
 export function HomeScreen() {
   const { demo, user } = useAuth();
   const [initialDate] = useState(() =>
@@ -81,12 +88,12 @@ export function HomeScreen() {
         );
         (row ?? addTrigger.current)?.focus();
       }
-      if (!loading) returnOccurrence.current = null;
+      if (!loading && !historyLoading) returnOccurrence.current = null;
     });
     return () => {
       active = false;
     };
-  }, [selected, items, loading]);
+  }, [selected, items, loading, history, historyLoading]);
   const [targetCheer, setTargetCheer] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [discard, setDiscard] = useState(false);
@@ -100,6 +107,7 @@ export function HomeScreen() {
   const generation = useRef(0);
   const historyGeneration = useRef(0);
   const historyLock = useRef(false);
+  const historyBoundary = useRef<CompletionCursor | null>(null);
   const load = useCallback(async () => {
     const version = ++generation.current;
     if (!demo && !user) {
@@ -162,24 +170,51 @@ export function HomeScreen() {
       setHistoryLoading(true);
       setHistoryError("");
       try {
-        const result = demo
+        let result = demo
           ? { items: demoListHistory(), nextCursor: null }
           : await listOwnHistory({ cursor: next });
         if (version !== historyGeneration.current) return;
+        const fresh = [...result.items];
+        const boundary = historyBoundary.current;
+        while (
+          !next &&
+          !demo &&
+          boundary &&
+          result.nextCursor &&
+          newerCursor(result.nextCursor, boundary)
+        ) {
+          const pageCursor = result.nextCursor;
+          result = await listOwnHistory({ cursor: pageCursor });
+          if (version !== historyGeneration.current) return;
+          if (result.nextCursor && !newerCursor(pageCursor, result.nextCursor))
+            throw new AppError("INVALID_INPUT", "다음 기록을 확인하지 못했어요");
+          fresh.push(...result.items);
+        }
+        const unique = [...new Map(fresh.map((item) => [item.occurrence.id, item])).values()];
         setHistory((previous) =>
           next
             ? [
                 ...previous,
-                ...result.items.filter(
+                ...unique.filter(
                   (item) => !previous.some((old) => old.occurrence.id === item.occurrence.id),
                 ),
               ]
-            : result.items,
+            : unique,
         );
         setCursor(result.nextCursor);
+        const oldest = unique.at(-1)?.occurrence;
+        if (oldest?.first_completed_at)
+          historyBoundary.current = {
+            firstCompletedAt: oldest.first_completed_at,
+            occurrenceId: oldest.id,
+          };
+        else if (!next) historyBoundary.current = null;
       } catch (cause) {
         if (version === historyGeneration.current) {
-          if (!next) setHistory([]);
+          if (!next) {
+            setHistory([]);
+            setCursor(null);
+          }
           setHistoryError(cause instanceof Error ? cause.message : "기록을 불러오지 못했어요");
         }
       } finally {
