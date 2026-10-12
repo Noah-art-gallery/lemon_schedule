@@ -268,6 +268,28 @@ assert.match(
   "batch summaries omit unauthorized targets",
 );
 
+const petVersionSql = readFileSync(
+  join(migrationDirectory, "20261012130000_versioned_pet_drawings.sql"),
+  "utf8",
+);
+assert.match(
+  petVersionSql,
+  /add constraint pets_drawing_path_check/,
+  "versioned pet paths remain constrained",
+);
+assert.match(petVersionSql, /user_id::text/, "drawing folder must match the pet owner");
+assert.ok(
+  petVersionSql.includes(
+    "/(pet|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[.]png$",
+  ),
+  "legacy and immutable UUID PNG filenames are accepted without nested paths",
+);
+assert.doesNotMatch(
+  petVersionSql,
+  /(?:drop|alter) policy/i,
+  "versioned saves retain existing private storage policies",
+);
+
 console.log(
   `SQL contract checks passed (${protectedTables.length} RLS tables, ${migrations.length} migration).`,
 );
