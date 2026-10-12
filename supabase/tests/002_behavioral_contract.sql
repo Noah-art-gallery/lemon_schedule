@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(139);
+select extensions.plan(150);
 
 select extensions.throws_ok(
   $$insert into auth.users (
@@ -111,6 +111,59 @@ select extensions.lives_ok(
     where user_id = auth.uid()$$,
   'owner can save a PNG drawing path accepted by the final constraint'
 );
+select extensions.lives_ok(
+  $$update public.pets set drawing_path = '00000000-0000-0000-0000-000000000001/12345678-1234-4234-8234-123456789abc.png' where user_id = auth.uid()$$,
+  'owner can point to a new immutable PNG version'
+);
+select extensions.throws_ok(
+  $$update public.pets set drawing_path = '00000000-0000-0000-0000-000000000002/pet.png' where user_id = auth.uid()$$,
+  '23514', 'new row for relation "pets" violates check constraint "pets_drawing_path_check"',
+  'drawing pointer rejects another owner legacy path'
+);
+select extensions.throws_ok(
+  $$update public.pets set drawing_path = '00000000-0000-0000-0000-000000000002/12345678-1234-4234-8234-123456789abc.png' where user_id = auth.uid()$$,
+  '23514', 'new row for relation "pets" violates check constraint "pets_drawing_path_check"',
+  'drawing pointer rejects another owner version path'
+);
+select extensions.throws_ok(
+  $$update public.pets set drawing_path = '00000000-0000-0000-0000-000000000001/../pet.png' where user_id = auth.uid()$$,
+  '23514', 'new row for relation "pets" violates check constraint "pets_drawing_path_check"',
+  'drawing pointer rejects path traversal'
+);
+select extensions.throws_ok(
+  $$update public.pets set drawing_path = '00000000-0000-0000-0000-000000000001/12345678-1234-4234-8234-123456789abc.jpg' where user_id = auth.uid()$$,
+  '23514', 'new row for relation "pets" violates check constraint "pets_drawing_path_check"',
+  'drawing pointer rejects non PNG files'
+);
+select extensions.throws_ok(
+  $$update public.pets set drawing_path = '00000000-0000-0000-0000-000000000001/nested/pet.png' where user_id = auth.uid()$$,
+  '23514', 'new row for relation "pets" violates check constraint "pets_drawing_path_check"',
+  'drawing pointer rejects unexpected nested paths'
+);
+select extensions.is(
+  (select drawing_path from public.pets where user_id = auth.uid()),
+  '00000000-0000-0000-0000-000000000001/12345678-1234-4234-8234-123456789abc.png',
+  'failed pointer updates preserve the previous drawing version'
+);
+select extensions.lives_ok(
+  $$update public.pets set drawing_path = '00000000-0000-0000-0000-000000000001/pet.png' where user_id = auth.uid()$$,
+  'legacy drawing remains valid after versioned save support'
+);
+select extensions.lives_ok(
+  $$insert into storage.objects(bucket_id,name) values ('pet-drawings','00000000-0000-0000-0000-000000000001/12345678-1234-4234-8234-123456789abc.png')$$,
+  'existing storage policy permits an owner versioned PNG'
+);
+select extensions.throws_ok(
+  $$insert into storage.objects(bucket_id,name) values ('pet-drawings','00000000-0000-0000-0000-000000000002/12345678-1234-4234-8234-123456789abc.png')$$,
+  '42501', 'new row violates row-level security policy for table "objects"',
+  'existing storage policy rejects another owner folder'
+);
+select extensions.throws_ok(
+  $$insert into storage.objects(bucket_id,name) values ('pet-drawings','00000000-0000-0000-0000-000000000001/12345678-1234-4234-8234-123456789abc.jpg')$$,
+  '42501', 'new row violates row-level security policy for table "objects"',
+  'existing storage policy rejects non PNG uploads'
+);
+
 select extensions.throws_ok(
   $$select public.set_pet_decorations('lemon-yellow', null, null)$$,
   'P0001',
