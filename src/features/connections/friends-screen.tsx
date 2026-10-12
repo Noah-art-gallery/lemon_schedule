@@ -2,7 +2,7 @@
 
 import { ArrowLeft, Copy, MoreHorizontal, UserPlus } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeading } from "@/components/layout/page-heading";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,7 @@ import {
 import type { CompletionCursor, EncouragementSummary, SocialActivityItem } from "@/types/contracts";
 import type { TaskOccurrenceRow } from "@/lib/supabase/database.types";
 import styles from "./friends-experience.module.css";
+import { activityBoundary, needsOlderActivity } from "./activity-boundary";
 
 const emptyConnections: ConnectionData = { friends: [], incoming: [], outgoing: [] };
 type View = "today" | "overdue" | "upcoming" | "history";
@@ -146,7 +147,16 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
   const mounted = useRef(true);
   const handledQuery = useRef("");
   const activityScroll = useRef(0);
-  const activityCount = useRef(0);
+  const lastActivityBoundary = useRef<CompletionCursor | null>(null);
+  const friendTriggers = useRef(new Map<string, HTMLButtonElement>());
+  const returnFriendFocus = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (selected || !returnFriendFocus.current) return;
+    (friendTriggers.current.get(returnFriendFocus.current) ?? addTrigger.current)?.focus({
+      preventScroll: true,
+    });
+    returnFriendFocus.current = null;
+  }, [selected]);
   const currentConnections = useRef(emptyConnections);
 
   const applyConnections = useCallback((next: ConnectionData) => {
@@ -189,6 +199,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
         return;
       }
       const token = ++generation.current;
+      const previousBoundary = lastActivityBoundary.current;
       if (!more) setLoading(true);
       setError("");
       try {
@@ -197,7 +208,8 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
           ? { items: demoListSocial(), nextCursor: null }
           : await listSocialActivity(more ? { cursor: more } : {});
         if (!more && !demo) {
-          while (page.nextCursor && page.items.length < activityCount.current) {
+          while (page.nextCursor && needsOlderActivity(page.nextCursor, previousBoundary)) {
+            if (!mounted.current || token !== generation.current) return;
             const extra = await listSocialActivity({ cursor: page.nextCursor });
             page.items.push(...extra.items);
             page.nextCursor = extra.nextCursor;
@@ -216,7 +228,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
               ]
             : items,
         );
-        activityCount.current = more ? activityCount.current + items.length : items.length;
+        lastActivityBoundary.current = activityBoundary(items) ?? (more ? previousBoundary : null);
         setCursor(page.nextCursor);
       } catch (cause) {
         if (token === generation.current) setError(message(cause));
@@ -331,7 +343,9 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
         ? { items: demoListSocial(id), nextCursor: null }
         : await listSocialActivity({ friendId: id });
       if (!demo && saved) {
-        while (history.nextCursor && history.items.length < saved.history.length) {
+        const previousBoundary = activityBoundary(saved.history);
+        while (history.nextCursor && needsOlderActivity(history.nextCursor, previousBoundary)) {
+          if (!mounted.current || token !== friendGeneration.current) return;
           const extra = await listSocialActivity({ friendId: id, cursor: history.nextCursor });
           history.items.push(...extra.items);
           history.nextCursor = extra.nextCursor;
@@ -423,6 +437,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
   }, [addOpen, demo, userId]);
 
   function leaveFriend() {
+    returnFriendFocus.current = selected;
     if (selected && overview) cache.current.set(selected, { ...overview, scroll: window.scrollY });
     friendGeneration.current++;
     selectedRef.current = null;
@@ -687,7 +702,14 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
         <>
           <div className={styles.friendPicker} aria-label="친구 선택">
             {data.friends.map((item) => (
-              <button key={item.id} onClick={() => void openFriend(item.id)}>
+              <button
+                key={item.id}
+                ref={(node) => {
+                  if (node) friendTriggers.current.set(item.id, node);
+                  else friendTriggers.current.delete(item.id);
+                }}
+                onClick={() => void openFriend(item.id)}
+              >
                 <span className={styles.avatar} aria-hidden="true">
                   {item.displayName.slice(0, 1)}
                 </span>
