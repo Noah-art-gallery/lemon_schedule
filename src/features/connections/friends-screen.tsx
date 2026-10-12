@@ -102,8 +102,40 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
   const [code, setCode] = useState("");
   const [ownCode, setOwnCode] = useState(demo ? "LEMON0001" : "");
   const [menu, setMenu] = useState(false);
+  const incomingHeading = useRef<HTMLHeadingElement>(null);
+  const outgoingHeading = useRef<HTMLHeadingElement>(null);
+  const requestFocus = useRef<"incoming" | "outgoing" | null>(null);
+  const managementTrigger = useRef<HTMLButtonElement>(null);
+  const addTrigger = useRef<HTMLButtonElement>(null);
+  const wasConfirming = useRef(false);
+  const wasAdding = useRef(false);
+  useEffect(() => {
+    if (!addOpen && wasAdding.current) {
+      queueMicrotask(() => {
+        if (
+          !document.activeElement ||
+          document.activeElement === document.body ||
+          !document.activeElement.isConnected
+        )
+          addTrigger.current?.focus();
+      });
+    }
+    wasAdding.current = addOpen;
+  }, [addOpen]);
   const [confirm, setConfirm] = useState<"disconnect" | "block" | null>(null);
+  useEffect(() => {
+    if (!confirm && wasConfirming.current) {
+      queueMicrotask(() => (managementTrigger.current ?? addTrigger.current)?.focus());
+    }
+    wasConfirming.current = Boolean(confirm);
+  }, [confirm]);
   const [pending, setPending] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pending && requestFocus.current) {
+      (requestFocus.current === "incoming" ? incomingHeading : outgoingHeading).current?.focus();
+      requestFocus.current = null;
+    }
+  }, [pending, data]);
   const mutation = useRef(false);
   const [actionError, setActionError] = useState("");
   const [unavailable, setUnavailable] = useState(false);
@@ -478,6 +510,8 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
       await action();
       if (!mounted.current) return false;
       onSuccess?.();
+      if (/^(accept|reject)-/.test(key)) requestFocus.current = "incoming";
+      if (key.startsWith("cancel-")) requestFocus.current = "outgoing";
       setNotice(success);
       try {
         await refreshConnections();
@@ -607,6 +641,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
         title="친구"
         action={
           <Button
+            ref={addTrigger}
             onClick={() => {
               setActionError("");
               setUnavailable(false);
@@ -705,6 +740,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
             <div className={styles.management}>
               <button
                 className="icon-button"
+                ref={managementTrigger}
                 aria-label="친구 관리"
                 aria-expanded={menu}
                 onClick={() => setMenu(!menu)}
@@ -799,7 +835,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
                 <div>
                   {rows.map((row) => (
                     <div key={row.id} className={styles.task}>
-                      <time>{row.occurrence_date}</time>
+                      {overview.view !== "today" ? <time>{row.occurrence_date}</time> : null}
                       <TaskRowView
                         occurrence={row}
                         summary={overview.summaries[row.id]}
@@ -902,7 +938,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
           ) : null}
           {notice ? <p role="status">{notice}</p> : null}
           <section>
-            <h3>
+            <h3 ref={incomingHeading} tabIndex={-1}>
               받은 요청 <span>{data.incoming.length}</span>
             </h3>
             {data.incoming.length ? (
@@ -952,7 +988,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
             )}
           </section>
           <section>
-            <h3>
+            <h3 ref={outgoingHeading} tabIndex={-1}>
               보낸 요청 <span>{data.outgoing.length}</span>
             </h3>
             {data.outgoing.length ? (

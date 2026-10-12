@@ -3,6 +3,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { FriendsScreen } from "./friends-screen";
 import {
   blockFriend,
+  respondToConnectionRequest,
   getConnectionData,
   listSocialActivity,
   type ConnectionChange,
@@ -12,7 +13,7 @@ import {
   listEncouragementSummaries,
   sendEncouragement,
 } from "@/features/encouragements/encouragement-service";
-import { demoListSocial } from "@/features/tasks/demo-task-store";
+import { demoListSocial, demoGetConnections } from "@/features/tasks/demo-task-store";
 const reviewAuth = vi.hoisted(() => ({ id: "demo" as string | null }));
 const realtime = vi.hoisted(() => ({
   listener: null as null | ((event: ConnectionChange) => void),
@@ -82,6 +83,7 @@ it("keeps blocking inside friend management and cancellation preserves connectio
   fireEvent.click(screen.getByRole("button", { name: "차단" }));
   expect(screen.getByRole("button", { name: "취소" })).toHaveFocus();
   fireEvent.click(screen.getByRole("button", { name: "취소" }));
+  await waitFor(() => expect(screen.getByLabelText("친구 관리")).toHaveFocus());
   expect(blockFriend).not.toHaveBeenCalled();
   expect(screen.getByRole("heading", { name: "지민" })).toBeInTheDocument();
 });
@@ -351,4 +353,19 @@ it("keeps a current draft when a different friend's connection is deleted", asyn
     realtime.listener?.({ kind: "connection", change: "DELETE", connectionId: 72 }),
   );
   expect(screen.getByLabelText("응원 초안")).toHaveValue("still connected");
+});
+
+it("moves focus to the request heading after accepting removes the request row", async () => {
+  const data = demoGetConnections();
+  vi.mocked(getConnectionData)
+    .mockResolvedValueOnce(data)
+    .mockResolvedValue({ ...data, incoming: [] });
+  vi.mocked(respondToConnectionRequest).mockResolvedValue({ requestId: 41, status: "accepted" });
+  render(<FriendsScreen />);
+  await screen.findByText("수학 문제 5개 풀기");
+  fireEvent.click(screen.getByRole("button", { name: /받은 요청.*확인하기/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "수락" }));
+  await waitFor(() => expect(screen.getByRole("heading", { name: "받은 요청 0" })).toHaveFocus());
+  fireEvent.click(screen.getByRole("button", { name: "닫기" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "친구 추가" })).toHaveFocus());
 });

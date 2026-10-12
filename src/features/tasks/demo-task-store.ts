@@ -8,6 +8,9 @@ import type {
   SocialActivityItem,
 } from "@/types/contracts";
 import { AppError } from "@/lib/errors";
+import type { PetDetails, PetDecorations } from "@/features/pet/pet-service";
+import type { ProfileDetails } from "@/features/profile/profile-service";
+import { profileInputSchema } from "@/features/profile/profile-service";
 import { toDateKey } from "@/lib/time";
 import { addUtcDays } from "./recurrence";
 import type { TaskInput } from "./task-service";
@@ -104,7 +107,78 @@ export function demoRequestConnection(code: string) {
   });
   emit();
 }
-const today = () => toDateKey(new Date(), "Asia/Seoul");
+let profile = { displayName: "하윤", timeZone: "Asia/Seoul" };
+let petImage: string | null = null;
+let decorations: PetDecorations = {
+  selectedColor: "leaf-green",
+  selectedAccessory: null,
+  selectedBackground: null,
+};
+export const demoToday = () => toDateKey(new Date(), profile.timeZone);
+const today = demoToday;
+export function demoGetProfile(): ProfileDetails {
+  const points = demoListHistory().length;
+  return {
+    ...profile,
+    inviteCode: "LEMON0001",
+    lemonPoints: points,
+    petLevel: Math.floor(points / 5) + 1,
+    blocked: demoFriends
+      .filter((friend) => blockedIds.has(friend.id))
+      .map((friend) => ({ ...friend })),
+  };
+}
+export function demoUpdateProfile(input: { displayName: string; timeZone: string }) {
+  const parsed = profileInputSchema.safeParse(input);
+  if (!parsed.success) throw new AppError("INVALID_INPUT", "닉네임과 시간대를 확인해 주세요");
+  profile = { ...profile, ...parsed.data };
+  emit();
+  return { ...profile };
+}
+export function demoUnblockUser(id: string) {
+  blockedIds.delete(id);
+  emit();
+}
+export function demoGetPet(): PetDetails {
+  const { lemonPoints, petLevel } = demoGetProfile();
+  const unlockedItems = [
+    [5, "lemon-yellow"],
+    [15, "leaf-hat"],
+    [30, "sunny-garden"],
+  ]
+    .filter(([points]) => lemonPoints >= Number(points))
+    .map(([, key]) => String(key));
+  return {
+    drawingPath: null,
+    lemonPoints,
+    petLevel,
+    unlockedItems,
+    unlockCount: unlockedItems.length,
+    decorations: { ...decorations },
+  };
+}
+export function demoGetPetImage() {
+  return petImage;
+}
+export function demoSavePetDrawing(url: string) {
+  if (petImage?.startsWith("blob:")) URL.revokeObjectURL(petImage);
+  petImage = url;
+  emit();
+}
+export function demoSaveDecorations(next: PetDecorations) {
+  const unlocked = demoGetPet().unlockedItems;
+  if (
+    [
+      next.selectedColor === "leaf-green" ? null : next.selectedColor,
+      next.selectedAccessory,
+      next.selectedBackground,
+    ].some((item) => item && !unlocked.includes(item))
+  )
+    throw new AppError("FORBIDDEN", "아직 열리지 않은 꾸미기예요");
+  decorations = { ...next };
+  emit();
+  return { ...decorations };
+}
 let records: TaskOccurrenceRow[] = [];
 let tasks: TaskRow[] = [];
 let cheers: EncouragementDisplay[] = [];

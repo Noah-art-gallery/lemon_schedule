@@ -18,23 +18,22 @@ import {
   type PetDecorations,
   type PetDetails,
 } from "./pet-service";
+import {
+  demoGetPet,
+  demoGetPetImage,
+  demoSavePetDrawing,
+  demoSaveDecorations,
+  subscribeDemoTasks,
+} from "@/features/tasks/demo-task-store";
 import styles from "./pet-screen.module.css";
 
-const demoPet: PetDetails = {
-  drawingPath: null,
-  lemonPoints: 3,
-  petLevel: 1,
-  unlockCount: 0,
-  unlockedItems: [],
-  decorations: { selectedColor: "leaf-green", selectedAccessory: null, selectedBackground: null },
-};
 const errorText = (cause: unknown, fallback: string) =>
   cause instanceof Error ? cause.message : fallback;
 
 export function PetScreen() {
   const { user, demo } = useAuth();
-  const [pet, setPet] = useState<PetDetails | null>(demo ? demoPet : null);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [pet, setPet] = useState<PetDetails | null>(demo ? demoGetPet() : null);
+  const [imageUrl, setImageUrl] = useState<string | null>(demo ? demoGetPetImage() : null);
   const [loadError, setLoadError] = useState("");
   const [imageError, setImageError] = useState("");
   const [reload, setReload] = useState(0);
@@ -46,6 +45,13 @@ export function PetScreen() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    if (!demo) return;
+    return subscribeDemoTasks(() => {
+      setPet(demoGetPet());
+      setImageUrl(demoGetPetImage());
+    });
+  }, [demo]);
   useEffect(() => {
     if (demo || !user) return;
     let active = true;
@@ -73,9 +79,9 @@ export function PetScreen() {
   }, [demo, user, reload]);
   useEffect(
     () => () => {
-      if (imageUrl?.startsWith("blob:")) URL.revokeObjectURL(imageUrl);
+      if (!demo && imageUrl?.startsWith("blob:")) URL.revokeObjectURL(imageUrl);
     },
-    [imageUrl],
+    [demo, imageUrl],
   );
 
   function beforeClose() {
@@ -102,7 +108,9 @@ export function PetScreen() {
         const result = await savePetDrawing(user.id, blob);
         setPet((current) => (current ? { ...current, drawingPath: result.drawingPath } : current));
       }
-      setImageUrl(URL.createObjectURL(blob));
+      const url = URL.createObjectURL(blob);
+      if (demo) demoSavePetDrawing(url);
+      setImageUrl(url);
       setImageError("");
       close();
       setNotice(demo ? "미리보기에 반영했어요" : "펫 그림을 저장했어요");
@@ -120,7 +128,7 @@ export function PetScreen() {
     setError("");
     try {
       const next = { ...pet.decorations, ...change };
-      const saved = demo ? next : await savePetDecorations(next);
+      const saved = demo ? demoSaveDecorations(next) : await savePetDecorations(next);
       setPet((current) => (current ? { ...current, decorations: saved } : current));
       setNotice(demo ? "미리보기에 반영했어요" : "꾸미기를 저장했어요");
     } catch (cause) {

@@ -1,110 +1,107 @@
 import { expect, test } from "@playwright/test";
 
-test("첫 화면이 모바일과 데스크톱에서 열린다", async ({ page }) => {
-  await page.goto("/");
-
-  await expect(page.getByRole("heading", { name: "오늘도 한 걸음, 같이 해요" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "주요 메뉴" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "알림 열기" })).toBeVisible();
-  await expect(page.getByAltText("두 팔을 들고 응원하는 기본 레몬 펫")).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-    true,
-  );
-});
-
-test("모든 주요 메뉴가 빈 상태에서도 열린다", async ({ page }) => {
+test("주요 화면과 소식 진입점이 좁은 화면에서도 열린다", async ({ page }) => {
   for (const [path, heading] of [
-    ["/friends", "친구와 같이 해볼까요?"],
-    ["/pet", "나만의 펫"],
-    ["/profile", "내 정보"],
-    ["/notifications", "알림"],
+    ["/", "할 일"],
+    ["/friends/", "친구"],
+    ["/pet/", "펫"],
+    ["/profile/", "내 정보"],
+    ["/notifications/", "소식"],
   ]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();
+    await expect(page.getByRole("link", { name: "소식 열기" })).toBeVisible();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
   }
 });
 
-test("데모에서 할 일을 만들고 완료하면 펫이 축하한다", async ({ page }) => {
+test("추가와 완료 후 재완료는 포인트를 다시 지급하지 않는다", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "할 일 추가" }).click();
-  await page.getByRole("textbox", { name: "할 일" }).fill("레몬 물 주기");
-  await page.getByRole("button", { name: "저장" }).click();
-
-  await expect(page.getByText("레몬 물 주기")).toBeVisible();
-  await page.getByRole("button", { name: "레몬 물 주기 완료로 표시" }).click();
-  await expect(page.getByRole("dialog", { name: "정말 잘했어요!" })).toBeVisible();
+  await page.getByRole("button", { name: "할 일 추가", exact: true }).click();
+  const panel = page.getByRole("dialog", { name: "할 일 추가" });
+  await panel.getByLabel("할 일", { exact: true }).fill("레몬 물 주기");
+  await panel.getByRole("button", { name: "할 일 추가", exact: true }).click();
+  await expect(panel).not.toBeVisible();
+  await page.getByRole("button", { name: "레몬 물 주기 완료", exact: true }).click();
+  await page.getByRole("button", { name: "레몬 물 주기 완료 취소", exact: true }).click();
+  await page.getByRole("button", { name: "레몬 물 주기 완료", exact: true }).click();
+  await page.getByRole("link", { name: "펫", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "3 포인트" })).toBeVisible();
 });
 
-test("로그인과 회원가입 화면이 열린다", async ({ page }) => {
-  await page.goto("/login");
-  await expect(page.getByRole("heading", { name: "다시 만나서 반가워요" })).toBeVisible();
-  await page.getByRole("link", { name: "회원가입" }).click();
-  await expect(page.getByRole("heading", { name: "레몬 펫과 시작해요" })).toBeVisible();
-  await expect(page.getByLabel("시간대")).toHaveValue(/.+/);
-});
-
-test("초대 링크의 코드를 친구 요청 화면까지 전달한다", async ({ page }) => {
+test("간결한 인증 화면에서 초대 코드를 이어간다", async ({ page }) => {
   await page.goto("/signup/?invite=LEMON1234");
-  await page.getByRole("link", { name: "로그인" }).click();
+  await expect(page.getByRole("heading", { name: "회원가입" })).toBeVisible();
+  await expect(page.getByLabel("시간대")).toHaveValue(/.+/);
+  await page.getByRole("link", { name: "로그인", exact: true }).click();
   await expect(page).toHaveURL(/\/login\/\?invite=LEMON1234/);
+  await expect(page.getByRole("heading", { name: "로그인" })).toBeVisible();
   await page.goto("/friends/?invite=LEMON1234");
   await expect(page.getByRole("textbox", { name: "친구 초대 코드" })).toHaveValue("LEMON1234");
 });
 
-test("알림을 모두 읽음으로 바꿀 수 있다", async ({ page }) => {
+test("소식에서 응원 원문을 연 뒤 모든 종류를 읽음 처리한다", async ({ page }) => {
   await page.goto("/notifications/");
-  await expect(page.getByRole("button", { name: "모두 읽음" })).toBeVisible();
+  await page.getByRole("button", { name: /지민.*응원/ }).click();
+  await expect(page.getByRole("dialog", { name: "할 일 상세" })).toBeVisible();
+  await expect(
+    page.getByRole("dialog").getByText("오늘도 잊지 않고 했네!", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "닫기", exact: true }).click();
   await page.getByRole("button", { name: "모두 읽음" }).click();
-  await expect(page.getByText("읽음")).toHaveCount(2);
+  await expect(page.getByLabel("읽지 않음", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel(/읽지 않은 소식/)).toHaveCount(0);
 });
 
-test("데모 홈과 알림을 열 때 hydration 오류가 없다", async ({ page }) => {
-  const hydrationErrors: string[] = [];
+test("펫 그리기 패널을 닫으면 진입 버튼으로 돌아간다", async ({ page }) => {
+  await page.goto("/pet/");
+  await expect(page.getByRole("option", { name: /레몬 노랑/ })).toBeDisabled();
+  const trigger = page.getByRole("button", { name: "새로 그리기" });
+  await trigger.click();
+  await expect(page.getByLabel("나만의 레몬 펫을 그리는 도화지")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+});
+
+test("친구 완료 항목에서 응원글을 보내고 반응만 바꿔도 글을 유지한다", async ({ page }) => {
+  await page.goto("/friends/");
+  await page.getByRole("button", { name: /수학 문제 5개 풀기/ }).click();
+  await page.getByRole("textbox", { name: "응원글" }).fill("끝까지 풀었네!");
+  await page.getByRole("button", { name: "응원 보내기" }).click();
+  await page.getByRole("button", { name: "박수", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "응원글" })).toHaveValue("끝까지 풀었네!");
+});
+
+test("친구 차단 확인은 취소에 초점을 두고 관리 버튼으로 돌아온다", async ({ page }) => {
+  await page.goto("/friends/");
+  await page.getByRole("button", { name: "지민", exact: true }).click();
+  const trigger = page.getByRole("button", { name: "친구 관리" });
+  await trigger.click();
+  await page.getByRole("button", { name: "차단", exact: true }).click();
+  await expect(page.getByRole("button", { name: "취소", exact: true })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(trigger).toBeFocused();
+  await expect(page.getByRole("heading", { name: "지민", exact: true })).toBeVisible();
+});
+
+test("데모의 주요 화면 진입에 hydration 오류가 없다", async ({ page }) => {
+  const errors: string[] = [];
   page.on("console", (message) => {
-    if (/Hydration failed|server rendered text didn't match/i.test(message.text())) {
-      hydrationErrors.push(message.text());
-    }
+    if (/Hydration failed|server rendered text didn't match/i.test(message.text()))
+      errors.push(message.text());
   });
   page.on("pageerror", (error) => {
-    if (/Hydration failed|server rendered text didn't match/i.test(error.message)) {
-      hydrationErrors.push(error.message);
-    }
+    if (/Hydration failed|server rendered text didn't match/i.test(error.message))
+      errors.push(error.message);
   });
-  await page.goto("/notifications/");
-  await expect(page.getByRole("heading", { name: "알림", level: 1 })).toBeVisible();
-  await page.goto("/");
-  await expect(page.getByRole("heading", { name: "오늘도 한 걸음, 같이 해요" })).toBeVisible();
-  expect(hydrationErrors).toEqual([]);
-});
-
-test("펫 도화지가 모바일에서도 열린다", async ({ page }) => {
-  await page.goto("/pet/");
-  await expect(page.getByRole("option", { name: /레몬 노랑/ })).toHaveAttribute("disabled", "");
-  await page.getByRole("button", { name: "빈 도화지에서 그리기" }).click();
-  await expect(page.getByLabel("나만의 레몬 펫을 그리는 도화지")).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-    true,
-  );
-});
-
-test("친구의 완료 기록에서 반응과 응원글을 입력할 수 있다", async ({ page }) => {
-  await page.goto("/friends/");
-  await page.getByRole("button", { name: /엄마/ }).click();
-  await page.getByRole("button", { name: "응원 보기" }).click();
-  await page.getByLabel("반응").selectOption("heart");
-  await page.getByRole("textbox", { name: "응원글 (선택, 120자 이하)" }).fill("잘했어!");
-  await page.getByRole("button", { name: "응원 보내기" }).click();
-  await expect(page.getByText("미리보기에서는 응원이 저장되지 않아요.")).toBeVisible();
-});
-
-test("친구를 바꾸면 이전 친구의 할 일이 다른 카드에 남지 않는다", async ({ page }) => {
-  await page.goto("/friends/");
-  await page.getByRole("button", { name: /엄마/ }).click();
-  await expect(page.getByText("아침 산책")).toBeVisible();
-  await page.getByRole("button", { name: /공부 친구/ }).click();
-  await expect(page.getByText("함께 공부하기")).toBeVisible();
-  await expect(page.getByText("아침 산책")).toHaveCount(0);
+  for (const [path, heading] of [
+    ["/notifications/", "소식"],
+    ["/", "할 일"],
+  ]) {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();
+  }
+  expect(errors).toEqual([]);
 });

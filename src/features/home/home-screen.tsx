@@ -23,6 +23,8 @@ import { TaskRowView } from "@/features/tasks/task-row-view";
 import { OccurrenceDetailPanel } from "@/features/tasks/occurrence-detail-panel";
 import {
   demoListOwn,
+  demoToday,
+  demoGetPetImage,
   demoListHistory,
   demoSummary,
   demoCreateTask,
@@ -65,7 +67,7 @@ export function HomeScreen() {
   const [futureNotice, setFutureNotice] = useState("");
   const [feedback, setFeedback] = useState("");
   const [pet, setPet] = useState<{ url: string | null; points: number } | null>(
-    demo ? { url: null, points: 2 } : null,
+    demo ? { url: demoGetPetImage(), points: demoListHistory().length } : null,
   );
   const generation = useRef(0);
   const historyGeneration = useRef(0);
@@ -81,9 +83,10 @@ export function HomeScreen() {
     try {
       if (demo) {
         const rows = demoListOwn();
+        setOwnerToday(demoToday());
         setItems(rows);
         setPet((previous) =>
-          previous ? { ...previous, points: demoListHistory().length } : previous,
+          previous ? { url: demoGetPetImage(), points: demoListHistory().length } : previous,
         );
         setSummaries(new Map(rows.map((row) => [row.id, demoSummary(row.id)])));
       } else {

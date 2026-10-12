@@ -79,7 +79,8 @@
   margin: 22px 0 8px;
 }
 .setting {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(170px, 52%);
   align-items: center;
   justify-content: space-between;
   gap: 20px;
@@ -97,7 +98,8 @@
   margin-top: 4px;
 }
 .setting select {
-  width: min(52%, 240px);
+  width: 100%;
+  min-width: 0;
 }
 .discard {
   display: grid;
@@ -119,10 +121,9 @@
   }
   .setting {
     gap: 12px;
-    flex-wrap: wrap;
+    grid-template-columns: minmax(0, 1fr) minmax(170px, 52%);
   }
   .setting select {
-    min-width: 170px;
-    flex: 1;
+    min-width: 0;
   }
 }
