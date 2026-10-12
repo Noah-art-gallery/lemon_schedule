@@ -34,10 +34,17 @@ import {
 import { addUtcDays } from "@/features/tasks/recurrence";
 import type { TaskOccurrenceRow } from "@/lib/supabase/database.types";
 import type { CompletionCursor, EncouragementSummary, OwnHistoryItem } from "@/types/contracts";
+import { AppError } from "@/lib/errors";
 import { toDateKey, getDeviceTimeZone } from "@/lib/time";
 import styles from "@/features/tasks/task-experience.module.css";
 
 type Tab = "today" | "upcoming" | "history";
+function newerCursor(left: CompletionCursor, right: CompletionCursor) {
+  return (
+    left.firstCompletedAt > right.firstCompletedAt ||
+    (left.firstCompletedAt === right.firstCompletedAt && left.occurrenceId > right.occurrenceId)
+  );
+}
 export function HomeScreen() {
   const { demo, user } = useAuth();
   const [initialDate] = useState(() =>
@@ -59,6 +66,34 @@ export function HomeScreen() {
   const pendingRef = useRef(new Set<number>());
   const [selected, setSelected] = useState<number | null>(null);
   const closingQuery = useRef(false);
+  const addTrigger = useRef<HTMLButtonElement>(null);
+  const returnOccurrence = useRef<number | null>(null);
+  useEffect(() => {
+    if (selected !== null) {
+      returnOccurrence.current = selected;
+      return;
+    }
+    const id = returnOccurrence.current;
+    if (id === null) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      if (
+        !document.activeElement ||
+        document.activeElement === document.body ||
+        !document.activeElement.isConnected
+      ) {
+        const row = document.querySelector<HTMLButtonElement>(
+          `button[data-occurrence-trigger="${id}"]`,
+        );
+        (row ?? addTrigger.current)?.focus();
+      }
+      if (!loading && !historyLoading) returnOccurrence.current = null;
+    });
+    return () => {
+      active = false;
+    };
+  }, [selected, items, loading, history, historyLoading]);
   const [targetCheer, setTargetCheer] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [discard, setDiscard] = useState(false);
@@ -72,6 +107,7 @@ export function HomeScreen() {
   const generation = useRef(0);
   const historyGeneration = useRef(0);
   const historyLock = useRef(false);
+  const historyBoundary = useRef<CompletionCursor | null>(null);
   const load = useCallback(async () => {
     const version = ++generation.current;
     if (!demo && !user) {
@@ -134,24 +170,51 @@ export function HomeScreen() {
       setHistoryLoading(true);
       setHistoryError("");
       try {
-        const result = demo
+        let result = demo
           ? { items: demoListHistory(), nextCursor: null }
           : await listOwnHistory({ cursor: next });
         if (version !== historyGeneration.current) return;
+        const fresh = [...result.items];
+        const boundary = historyBoundary.current;
+        while (
+          !next &&
+          !demo &&
+          boundary &&
+          result.nextCursor &&
+          newerCursor(result.nextCursor, boundary)
+        ) {
+          const pageCursor = result.nextCursor;
+          result = await listOwnHistory({ cursor: pageCursor });
+          if (version !== historyGeneration.current) return;
+          if (result.nextCursor && !newerCursor(pageCursor, result.nextCursor))
+            throw new AppError("INVALID_INPUT", "다음 기록을 확인하지 못했어요");
+          fresh.push(...result.items);
+        }
+        const unique = [...new Map(fresh.map((item) => [item.occurrence.id, item])).values()];
         setHistory((previous) =>
           next
             ? [
                 ...previous,
-                ...result.items.filter(
+                ...unique.filter(
                   (item) => !previous.some((old) => old.occurrence.id === item.occurrence.id),
                 ),
               ]
-            : result.items,
+            : unique,
         );
         setCursor(result.nextCursor);
+        const oldest = unique.at(-1)?.occurrence;
+        if (oldest?.first_completed_at)
+          historyBoundary.current = {
+            firstCompletedAt: oldest.first_completed_at,
+            occurrenceId: oldest.id,
+          };
+        else if (!next) historyBoundary.current = null;
       } catch (cause) {
         if (version === historyGeneration.current) {
-          if (!next) setHistory([]);
+          if (!next) {
+            setHistory([]);
+            setCursor(null);
+          }
           setHistoryError(cause instanceof Error ? cause.message : "기록을 불러오지 못했어요");
         }
       } finally {
@@ -310,6 +373,7 @@ export function HomeScreen() {
         title="할 일"
         action={
           <Button
+            ref={addTrigger}
             onClick={() => {
               dirty.current = false;
               setAdding(true);
@@ -360,12 +424,12 @@ export function HomeScreen() {
           </Button>
         </div>
       ) : null}
-      {loading && tab !== "history" ? (
+      {loading && !items.length && tab !== "history" ? (
         <p className={styles.skeleton} role="status">
           할 일 불러오는 중
         </p>
       ) : null}
-      {tab === "today" && !loading ? (
+      {tab === "today" && !error && (!loading || items.length > 0) ? (
         <>
           <div className={styles.toolbar}>
             <h2 className={styles.sectionTitle}>{ownerToday}</h2>
@@ -411,7 +475,7 @@ export function HomeScreen() {
           ) : null}
         </>
       ) : null}
-      {tab === "upcoming" && !loading ? (
+      {tab === "upcoming" && !error && (!loading || items.length > 0) ? (
         <section>
           <div className={styles.toolbar}>
             <span className={styles.status}>
