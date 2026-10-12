@@ -104,5 +104,57 @@ it("discards expanded cached previews and the selected target after access inval
   await act(async () => m.refresh?.(true));
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(screen.queryByText("민감한 이전 소식")).not.toBeInTheDocument();
-  expect(listInbox).toHaveBeenCalledWith({ filter: "all", cursor: 11, limit: 1 });
+  expect(listInbox).toHaveBeenCalledWith({ filter: "all", cursor: 12 });
+});
+
+it("returns to the revalidated page-two row after a normal focus refresh", async () => {
+  let refreshed = false;
+  let finish!: (page: { items: InboxItem[]; nextCursor: number }) => void;
+  vi.mocked(listInbox).mockImplementation(async ({ cursor }) =>
+    cursor
+      ? { items: [row(10, "열었던 소식")], nextCursor: null }
+      : refreshed
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : { items: [row(12, "최신 소식")], nextCursor: 12 },
+  );
+  render(<NotificationScreen />);
+  fireEvent.click(await screen.findByRole("button", { name: "이전 소식 더 보기" }));
+  const trigger = await screen.findByRole("button", { name: /열었던 소식/ });
+  trigger.focus();
+  fireEvent.click(trigger);
+  refreshed = true;
+  await act(async () => m.refresh?.(true));
+  expect(trigger).not.toBeInTheDocument();
+  await act(async () => finish({ items: [row(12, "최신 소식")], nextCursor: 12 }));
+  fireEvent.click(screen.getByRole("button", { name: "닫기" }));
+  const replacement = screen.getByRole("button", { name: /열었던 소식/ });
+  expect(replacement).not.toBe(trigger);
+  await waitFor(() => expect(replacement).toHaveFocus());
+});
+it("clears previews during invalidation and closes detail if revalidation fails", async () => {
+  vi.mocked(listInbox).mockImplementation(async ({ cursor }) =>
+    cursor
+      ? { items: [row(10, "민감한 이전 소식")], nextCursor: null }
+      : { items: [row(12, "최신 소식")], nextCursor: 12 },
+  );
+  render(<NotificationScreen />);
+  fireEvent.click(await screen.findByRole("button", { name: "이전 소식 더 보기" }));
+  const trigger = await screen.findByRole("button", { name: /민감한 이전 소식/ });
+  fireEvent.click(trigger);
+  let fail!: (error: Error) => void;
+  vi.mocked(listInbox).mockImplementation(
+    () =>
+      new Promise((_resolve, reject) => {
+        fail = reject;
+      }),
+  );
+  await act(async () => m.refresh?.(true));
+  expect(trigger).not.toBeInTheDocument();
+  expect(screen.queryByText("민감한 이전 소식")).not.toBeInTheDocument();
+  await act(async () => fail(new Error("조회 실패")));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByText("민감한 이전 소식")).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole("button", { name: "전체" })).toHaveFocus());
 });

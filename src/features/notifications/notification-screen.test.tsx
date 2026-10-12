@@ -245,7 +245,7 @@ it("revalidates the exact older target and retains its draft when the first page
   const input = screen.getByRole("textbox", { name: "작성 중인 제목" });
   fireEvent.change(input, { target: { value: "오래된 기록 편집 중" } });
   await act(async () => mocks.refresh?.(true));
-  expect(listInbox).toHaveBeenCalledWith({ filter: "all", cursor: 8, limit: 1 });
+  expect(listInbox).toHaveBeenCalledWith({ filter: "all", cursor: 8 });
   expect(input).toHaveValue("오래된 기록 편집 중");
   expect(input).toBeInTheDocument();
 });

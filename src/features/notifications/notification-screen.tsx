@@ -38,6 +38,14 @@ function NotificationContent() {
   const [reading, setReading] = useState(false);
   const [selected, setSelected] = useState<InboxItem | null>(null);
   const [resolved, setResolved] = useState(false);
+  const returnFocusId = useRef<number | null>(null);
+  useEffect(() => {
+    if (selected || loading || returnFocusId.current === null) return;
+    const row = document.getElementById(`inbox-item-${returnFocusId.current}`);
+    const fallback = document.getElementById(`inbox-filter-${filter}`);
+    (row ?? fallback)?.focus({ preventScroll: true });
+    returnFocusId.current = null;
+  }, [selected, loading, items, filter]);
   const selectedRef = useRef(selected);
   useEffect(() => {
     selectedRef.current = selected;
@@ -57,11 +65,10 @@ function NotificationContent() {
       const key = `${account}:${filter}`;
       const target = selectedRef.current;
       const oldestId =
-        !invalidate && loadedBoundary.current.scope === key
-          ? loadedBoundary.current.oldestId
-          : null;
+        loadedBoundary.current.scope === key ? loadedBoundary.current.oldestId : null;
       const clearTarget = () => {
         if (target && selectedRef.current?.id === target.id) {
+          returnFocusId.current = target.id;
           setSelected(null);
           setResolved(false);
         }
@@ -233,6 +240,7 @@ function NotificationContent() {
           <button
             key={item.key}
             type="button"
+            id={`inbox-filter-${item.key}`}
             aria-pressed={filter === item.key}
             onClick={() => setFilter(item.key)}
           >
@@ -276,6 +284,7 @@ function NotificationContent() {
               type="button"
               className={`${styles.row} ${item.readAt ? styles.read : ""}`}
               key={item.id}
+              id={`inbox-item-${item.id}`}
               onClick={() => open(item)}
             >
               <span className={styles.icon} aria-hidden="true">
@@ -352,6 +361,7 @@ function NotificationContent() {
             occurrenceId={selected.occurrenceId}
             encouragementId={selected.encouragementId}
             onClose={() => {
+              returnFocusId.current = selected.id;
               setSelected(null);
               setResolved(false);
             }}
