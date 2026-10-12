@@ -1,698 +1,540 @@
 "use client";
-
-import { Check, Clock3, MessageCircle, PencilLine, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import Image from "next/image";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-
+import { Plus, ChevronRight, Citrus } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeading } from "@/components/layout/page-heading";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Field } from "@/components/ui/field";
-import { ProgressRing } from "@/components/ui/progress-ring";
+import { Panel } from "@/components/ui/panel";
 import { useAuth } from "@/features/auth/auth-provider";
-import {
-  hideEncouragement,
-  listEncouragements,
-  type EncouragementDisplay,
-} from "@/features/encouragements/encouragement-service";
+import { listEncouragementSummaries } from "@/features/encouragements/encouragement-service";
 import { getPetDetails, getPetDrawingUrl } from "@/features/pet/pet-service";
 import {
-  completeOccurrence,
+  listOccurrenceWindow,
+  listOwnHistory,
   createTask,
-  deleteTask,
-  getOwnOccurrence,
-  listOccurrences,
+  completeOccurrence,
   reopenOccurrence,
-  updateTask,
+  type TaskInput,
 } from "@/features/tasks/task-service";
+import { TaskEditor } from "@/features/tasks/task-editor";
+import { TaskRowView } from "@/features/tasks/task-row-view";
+import { OccurrenceDetailPanel } from "@/features/tasks/occurrence-detail-panel";
+import {
+  demoListOwn,
+  demoListHistory,
+  demoSummary,
+  demoCreateTask,
+  demoToggleOccurrence,
+  subscribeDemoTasks,
+} from "@/features/tasks/demo-task-store";
 import { addUtcDays } from "@/features/tasks/recurrence";
-import { AppError } from "@/lib/errors";
-import { getSupabaseClient } from "@/lib/supabase/client";
 import type { TaskOccurrenceRow } from "@/lib/supabase/database.types";
-import { getDeviceTimeZone, toDateKey } from "@/lib/time";
+import type { CompletionCursor, EncouragementSummary, OwnHistoryItem } from "@/types/contracts";
+import { toDateKey, getDeviceTimeZone } from "@/lib/time";
+import styles from "@/features/tasks/task-experience.module.css";
 
-const demoOccurrences: TaskOccurrenceRow[] = [
-  {
-    id: 1,
-    task_id: 1,
-    owner_id: "demo",
-    occurrence_date: "today",
-    title_snapshot: "물 2잔 마시기",
-    due_time: null,
-    recurrence_snapshot: "daily",
-    status: "completed",
-    completed_at: new Date().toISOString(),
-    first_completed_at: new Date().toISOString(),
-    reopened_at: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 2,
-    task_id: 2,
-    owner_id: "demo",
-    occurrence_date: "today",
-    title_snapshot: "영어 단어 10개",
-    due_time: null,
-    recurrence_snapshot: "daily",
-    status: "completed",
-    completed_at: new Date().toISOString(),
-    first_completed_at: new Date().toISOString(),
-    reopened_at: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 3,
-    task_id: 3,
-    owner_id: "demo",
-    occurrence_date: "today",
-    title_snapshot: "저녁 산책",
-    due_time: "19:30:00",
-    recurrence_snapshot: "none",
-    status: "pending",
-    completed_at: null,
-    first_completed_at: null,
-    reopened_at: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
-
-function recurrenceLabel(value: TaskOccurrenceRow["recurrence_snapshot"]): string {
-  return { none: "", daily: "매일 반복", weekly: "매주 반복", monthly: "매월 반복" }[value];
-}
-
+type Tab = "today" | "upcoming" | "history";
 export function HomeScreen() {
-  const { user, demo } = useAuth();
-  const [timeZone, setTimeZone] = useState(() => (demo ? "Asia/Seoul" : getDeviceTimeZone()));
-  const today = toDateKey(new Date(), timeZone);
-  const [ownerToday, setOwnerToday] = useState(today);
-  const [items, setItems] = useState<TaskOccurrenceRow[]>(() =>
-    demo ? demoOccurrences.map((item) => ({ ...item, occurrence_date: today })) : [],
+  const { demo, user } = useAuth();
+  const [initialDate] = useState(() =>
+    toDateKey(new Date(), demo ? "Asia/Seoul" : getDeviceTimeZone()),
   );
-  const [loading, setLoading] = useState(!demo);
-  const [saving, setSaving] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<TaskOccurrenceRow | null>(null);
-  const [celebrate, setCelebrate] = useState(false);
-  const [petImageUrl, setPetImageUrl] = useState<string | null>(null);
-  const [selectedRecord, setSelectedRecord] = useState<TaskOccurrenceRow | null>(null);
-  const [encouragements, setEncouragements] = useState<EncouragementDisplay[]>([]);
+  const [ownerToday, setOwnerToday] = useState(initialDate);
+  const [from, setFrom] = useState(addUtcDays(initialDate, -30));
+  const [to, setTo] = useState(addUtcDays(initialDate, 30));
+  const [items, setItems] = useState<TaskOccurrenceRow[]>([]);
+  const [summaries, setSummaries] = useState<Map<number, EncouragementSummary>>(new Map());
+  const [history, setHistory] = useState<OwnHistoryItem[]>([]);
+  const [cursor, setCursor] = useState<CompletionCursor | null>(null);
+  const [tab, setTab] = useState<Tab>("today");
+  const [loading, setLoading] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState("");
-
-  async function load() {
-    if (demo) return;
-    if (!user) return;
-    try {
-      const result = await listOccurrences({
-        ownerId: user.id,
-        from: addUtcDays(today, -366),
-        to: addUtcDays(today, 366),
-      });
-      setItems(result.occurrences);
-      setOwnerToday(result.today);
-      setError("");
-    } catch (cause) {
-      setError(cause instanceof AppError ? cause.message : "목록을 불러오지 못했어요.");
-    } finally {
+  const [historyError, setHistoryError] = useState("");
+  const [pending, setPending] = useState<Set<number>>(new Set());
+  const pendingRef = useRef(new Set<number>());
+  const [selected, setSelected] = useState<number | null>(null);
+  const closingQuery = useRef(false);
+  const [targetCheer, setTargetCheer] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [discard, setDiscard] = useState(false);
+  const dirty = useRef(false);
+  const editorBusy = useRef(false);
+  const [futureNotice, setFutureNotice] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [pet, setPet] = useState<{ url: string | null; points: number } | null>(
+    demo ? { url: null, points: 10 } : null,
+  );
+  const generation = useRef(0);
+  const historyGeneration = useRef(0);
+  const historyLock = useRef(false);
+  const load = useCallback(async () => {
+    const version = ++generation.current;
+    if (!demo && !user) {
       setLoading(false);
+      return;
     }
-  }
-
-  useEffect(() => {
-    if (demo || !user) return;
-    let active = true;
-    void Promise.all([
-      listOccurrences({
-        ownerId: user.id,
-        from: addUtcDays(today, -366),
-        to: addUtcDays(today, 366),
-      }),
-      getSupabaseClient()
-        .from("profile_private")
-        .select("time_zone")
-        .eq("user_id", user.id)
-        .single(),
-    ])
-      .then(([result, privateProfile]) => {
-        if (privateProfile.error)
-          throw new AppError("INVALID_INPUT", "시간대 정보를 불러오지 못했어요.");
-        if (active) {
-          setItems(result.occurrences);
-          setOwnerToday(result.today);
-          if (privateProfile.data) setTimeZone(privateProfile.data.time_zone);
-        }
-      })
-      .catch((cause: unknown) => {
-        if (active) {
-          setError(cause instanceof Error ? cause.message : "목록을 불러오지 못했어요.");
-        }
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [demo, today, user]);
-
-  useEffect(() => {
-    if (demo || !user) return;
-    let active = true;
-    void getPetDetails(user.id)
-      .then((pet) => getPetDrawingUrl(pet.drawingPath))
-      .then((url) => {
-        if (active) setPetImageUrl(url);
-      })
-      .catch(() => {
-        if (active) setPetImageUrl(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [demo, user]);
-
-  const openRecord = useCallback(
-    async (item: TaskOccurrenceRow) => {
-      setSelectedRecord(item);
+    setLoading(true);
+    setError("");
+    try {
       if (demo) {
-        setEncouragements([]);
-        return;
+        const rows = demoListOwn();
+        setItems(rows);
+        setPet((previous) =>
+          previous ? { ...previous, points: demoListHistory().length * 5 } : previous,
+        );
+        setSummaries(new Map(rows.map((row) => [row.id, demoSummary(row.id)])));
+      } else {
+        const result = await listOccurrenceWindow({ ownerId: user!.id, from, to });
+        const ids = result.occurrences.map((row) => row.id);
+        const grouped = new Map<number, EncouragementSummary>();
+        for (let start = 0; start < ids.length; start += 100) {
+          const page = await listEncouragementSummaries({
+            occurrenceIds: ids.slice(start, start + 100),
+          });
+          page.items.forEach((item) => grouped.set(item.occurrenceId, item.summary));
+        }
+        if (version !== generation.current) return;
+        setItems(result.occurrences);
+        setOwnerToday(result.today);
+        setSummaries(grouped);
       }
+    } catch (cause) {
+      if (version === generation.current) {
+        setItems([]);
+        setSummaries(new Map());
+        setError(cause instanceof Error ? cause.message : "할 일을 불러오지 못했어요");
+      }
+    } finally {
+      if (version === generation.current) setLoading(false);
+    }
+  }, [demo, user, from, to]);
+  useEffect(() => {
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (active) void load();
+    });
+    return () => {
+      active = false;
+      // Invalidate asynchronous list responses after dependency changes.
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- invalidating the latest request is intentional
+      generation.current++;
+    };
+  }, [load]);
+  const loadHistory = useCallback(
+    async (next?: CompletionCursor) => {
+      if (historyLock.current && next) return;
+      historyLock.current = true;
+      const version = ++historyGeneration.current;
+      setHistoryLoading(true);
+      setHistoryError("");
       try {
-        setEncouragements(await listEncouragements(item.id));
+        const result = demo
+          ? { items: demoListHistory(), nextCursor: null }
+          : await listOwnHistory({ cursor: next });
+        if (version !== historyGeneration.current) return;
+        setHistory((previous) =>
+          next
+            ? [
+                ...previous,
+                ...result.items.filter(
+                  (item) => !previous.some((old) => old.occurrence.id === item.occurrence.id),
+                ),
+              ]
+            : result.items,
+        );
+        setCursor(result.nextCursor);
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "받은 응원을 불러오지 못했어요.");
+        if (version === historyGeneration.current) {
+          if (!next) setHistory([]);
+          setHistoryError(cause instanceof Error ? cause.message : "기록을 불러오지 못했어요");
+        }
+      } finally {
+        if (version === historyGeneration.current) {
+          setHistoryLoading(false);
+          historyLock.current = false;
+        }
       }
     },
     [demo],
   );
-
   useEffect(() => {
-    if (demo || !user) return;
-    const occurrenceId = Number(new URLSearchParams(window.location.search).get("occurrence"));
-    if (!Number.isSafeInteger(occurrenceId) || occurrenceId <= 0) return;
-    void getOwnOccurrence(occurrenceId, user.id)
-      .then(openRecord)
-      .catch((cause: unknown) =>
-        setError(cause instanceof Error ? cause.message : "완료 기록을 찾지 못했어요."),
-      );
-  }, [demo, user, openRecord]);
-
-  const todayItems = items.filter((item) => item.occurrence_date === ownerToday);
-  const overdueItems = items.filter(
-    (item) => item.occurrence_date < ownerToday && item.status === "pending",
-  );
-  const completed = todayItems.filter((item) => item.status === "completed").length;
-  const completedHistory = items
-    .filter((item) => item.occurrence_date < ownerToday && item.status === "completed")
-    .sort((a, b) => b.occurrence_date.localeCompare(a.occurrence_date) || b.id - a.id);
-
-  async function submitTask(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    setSaving(true);
-    setError("");
-    try {
-      if (editing) {
-        if (demo) {
-          setItems((current) =>
-            current.map((item) =>
-              item.task_id === editing.task_id
-                ? {
-                    ...item,
-                    title_snapshot: String(data.get("title")),
-                    due_time: String(data.get("dueTime") || "") || null,
-                    recurrence_snapshot: String(
-                      data.get("recurrence"),
-                    ) as TaskOccurrenceRow["recurrence_snapshot"],
-                  }
-                : item,
-            ),
-          );
-        } else {
-          await updateTask({
-            taskId: editing.task_id,
-            title: String(data.get("title") ?? ""),
-            dueDate: String(data.get("dueDate") ?? ""),
-            dueTime: String(data.get("dueTime") ?? ""),
-            recurrence: String(data.get("recurrence") ?? "none") as "none",
-          });
-          await load();
-        }
-      } else if (demo) {
-        const recurrence = String(
-          data.get("recurrence"),
-        ) as TaskOccurrenceRow["recurrence_snapshot"];
-        setItems((current) => [
-          ...current,
-          {
-            ...demoOccurrences[2],
-            id: Date.now(),
-            task_id: Date.now(),
-            title_snapshot: String(data.get("title")),
-            occurrence_date: String(data.get("dueDate")),
-            due_time: String(data.get("dueTime") || "") || null,
-            recurrence_snapshot: recurrence,
-          },
-        ]);
-      } else if (user) {
-        await createTask({
-          title: String(data.get("title") ?? ""),
-          dueDate: String(data.get("dueDate") ?? ""),
-          dueTime: String(data.get("dueTime") ?? ""),
-          recurrence: String(data.get("recurrence") ?? "none") as "none",
-        });
-        await load();
-      }
-      form.reset();
-      setShowForm(false);
-      setEditing(null);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "할 일을 저장하지 못했어요.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function remove(item: TaskOccurrenceRow) {
-    if (!window.confirm(`‘${item.title_snapshot}’ 할 일을 삭제할까요?`)) return;
-    try {
-      if (demo) setItems((current) => current.filter((value) => value.task_id !== item.task_id));
-      else {
-        await deleteTask(item.task_id);
-        await load();
-      }
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "할 일을 삭제하지 못했어요.");
-    }
-  }
-
-  async function edit(item: TaskOccurrenceRow) {
-    if (demo) {
-      setEditing(item);
-    } else {
-      const { data, error: taskError } = await getSupabaseClient()
-        .from("tasks")
-        .select("title, due_date, due_time, recurrence")
-        .eq("id", item.task_id)
-        .single();
-      if (taskError || !data) {
-        setError("원본 할 일을 불러오지 못했어요.");
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (active && tab === "history") void loadHistory();
+    });
+    return () => {
+      active = false;
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- invalidating the latest request is intentional
+      historyGeneration.current++;
+      historyLock.current = false;
+    };
+  }, [tab, loadHistory]);
+  const refresh = useCallback(() => {
+    void load();
+    if (tab === "history") void loadHistory();
+  }, [load, loadHistory, tab]);
+  useEffect(() => (demo ? subscribeDemoTasks(refresh) : undefined), [demo, refresh]);
+  useEffect(() => {
+    function query() {
+      if (closingQuery.current) {
+        closingQuery.current = false;
+        const clean = new URL(window.location.href);
+        clean.searchParams.delete("occurrence");
+        clean.searchParams.delete("encouragement");
+        window.history.replaceState(window.history.state, "", clean);
         return;
       }
-      setEditing({
-        ...item,
-        title_snapshot: data.title,
-        occurrence_date: data.due_date,
-        due_time: data.due_time,
-        recurrence_snapshot: data.recurrence,
+      const params = new URLSearchParams(window.location.search);
+      const id = Number(params.get("occurrence"));
+      if (Number.isSafeInteger(id) && id > 0) {
+        setSelected(id);
+        const cheer = Number(params.get("encouragement"));
+        setTargetCheer(Number.isSafeInteger(cheer) && cheer > 0 ? cheer : null);
+      }
+    }
+    query();
+    window.addEventListener("popstate", query);
+    return () => window.removeEventListener("popstate", query);
+  }, []);
+  useEffect(() => {
+    if (demo || !user) return;
+    let active = true;
+    void getPetDetails(user.id)
+      .then(async (result) => ({
+        url: await getPetDrawingUrl(result.drawingPath),
+        points: result.lemonPoints,
+      }))
+      .then((result) => {
+        if (active) setPet(result);
+      })
+      .catch(() => {
+        if (active) setPet(null);
       });
-    }
-    setShowForm(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    return () => {
+      active = false;
+    };
+  }, [demo, user, items]);
+  useEffect(() => {
+    if (!feedback) return;
+    const timer = setTimeout(() => setFeedback(""), 2800);
+    return () => clearTimeout(timer);
+  }, [feedback]);
+  function open(id: number) {
+    setTargetCheer(null);
+    setSelected(id);
   }
-
-  async function toggle(item: TaskOccurrenceRow) {
+  function closeDetail() {
+    setSelected(null);
+    setTargetCheer(null);
+    const url = new URL(window.location.href);
+    closingQuery.current = Boolean(
+      url.searchParams.has("occurrence") && window.history.state?.lemonPanel,
+    );
+    url.searchParams.delete("occurrence");
+    url.searchParams.delete("encouragement");
+    window.history.replaceState(window.history.state, "", url);
+  }
+  async function toggle(row: TaskOccurrenceRow) {
+    if (pendingRef.current.has(row.id)) return;
+    pendingRef.current.add(row.id);
+    setPending(new Set(pendingRef.current));
     setError("");
-    if (demo) {
-      const completing = item.status === "pending";
-      setItems((current) =>
-        current.map((value) =>
-          value.id === item.id
-            ? {
-                ...value,
-                status: completing ? "completed" : "pending",
-                completed_at: completing ? new Date().toISOString() : null,
-              }
-            : value,
-        ),
-      );
-      if (completing) setCelebrate(true);
-      return;
-    }
     try {
-      if (item.status === "completed") await reopenOccurrence(item.id);
-      else if ((await completeOccurrence(item.id)).firstCompletion) setCelebrate(true);
+      if (demo) {
+        if (demoToggleOccurrence(row.id).firstCompletion) {
+          setFeedback("완료 · 펫이 5포인트 성장했어요 · 미리보기");
+        }
+      } else if (row.status === "completed") {
+        await reopenOccurrence(row.id);
+      } else {
+        const result = await completeOccurrence(row.id);
+        if (result.firstCompletion)
+          setFeedback(`완료 · 펫이 ${result.rewardPoints}포인트 성장했어요`);
+      }
       await load();
+      if (tab === "history") await loadHistory();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "상태를 바꾸지 못했어요.");
+      setError(cause instanceof Error ? cause.message : "상태를 저장하지 못했어요");
+    } finally {
+      pendingRef.current.delete(row.id);
+      setPending(new Set(pendingRef.current));
     }
   }
-
+  async function save(input: TaskInput) {
+    if (demo) demoCreateTask(input);
+    else await createTask(input);
+    dirty.current = false;
+    setAdding(false);
+    if (input.dueDate > ownerToday) {
+      setFutureNotice(input.dueDate);
+      if (input.dueDate > to) setTo(input.dueDate);
+    }
+    await load();
+  }
+  const todayItems = items.filter((item) => item.occurrence_date === ownerToday);
+  const overdue = items
+    .filter((item) => item.occurrence_date < ownerToday && item.status === "pending")
+    .sort((a, b) => a.occurrence_date.localeCompare(b.occurrence_date));
+  const upcoming = items
+    .filter((item) => item.occurrence_date > ownerToday)
+    .sort((a, b) => a.occurrence_date.localeCompare(b.occurrence_date) || a.id - b.id);
+  function rows(list: TaskOccurrenceRow[], dates = false) {
+    return list.map((row, index) => (
+      <div key={row.id}>
+        {dates && (!index || list[index - 1].occurrence_date !== row.occurrence_date) ? (
+          <h3 className={styles.groupDate}>{row.occurrence_date}</h3>
+        ) : null}
+        <TaskRowView
+          occurrence={row}
+          summary={summaries.get(row.id)}
+          pending={pending.has(row.id)}
+          onOpen={() => open(row.id)}
+          onToggle={() => {
+            // The compiler follows this callback through the row factory; it runs only on click.
+            // eslint-disable-next-line react-hooks/refs
+            void toggle(row);
+          }}
+        />
+      </div>
+    ));
+  }
   return (
-    <AppShell notificationCount={demo ? 2 : undefined}>
+    <AppShell>
       <PageHeading
-        eyebrow={new Intl.DateTimeFormat("ko-KR", { dateStyle: "long", timeZone }).format(
-          new Date(),
-        )}
-        title="오늘도 한 걸음, 같이 해요"
-        description="작은 완료가 쌓일수록 레몬 펫도 함께 자라요."
+        title="할 일"
         action={
           <Button
             onClick={() => {
-              setEditing(null);
-              setShowForm((value) => !value);
+              dirty.current = false;
+              setAdding(true);
             }}
-            aria-expanded={showForm}
-            aria-label={showForm ? "할 일 추가 닫기" : "할 일 추가"}
           >
-            {showForm ? <X size={18} aria-hidden="true" /> : <Plus size={18} aria-hidden="true" />}
-            <span className="button-label">{showForm ? "닫기" : "할 일 추가"}</span>
+            <Plus size={18} aria-hidden="true" />할 일 추가
           </Button>
         }
       />
-
-      {showForm ? (
-        <Card as="section" className="task-form-card" aria-labelledby="new-task-title">
-          <h2 id="new-task-title">{editing ? "할 일 수정" : "새 할 일"}</h2>
-          <form className="task-form" onSubmit={submitTask} key={editing?.id ?? "new"}>
-            <Field
-              label="할 일"
-              name="title"
-              defaultValue={editing?.title_snapshot}
-              maxLength={80}
-              required
-            />
-            <Field
-              label="날짜"
-              name="dueDate"
-              type="date"
-              defaultValue={editing?.occurrence_date ?? ownerToday}
-              required
-            />
-            <Field
-              label="시간 (선택)"
-              name="dueTime"
-              type="time"
-              defaultValue={editing?.due_time?.slice(0, 5)}
-            />
-            <label className="field">
-              <span className="field__label">반복</span>
-              <select
-                className="field__input"
-                name="recurrence"
-                defaultValue={editing?.recurrence_snapshot ?? "none"}
-              >
-                <option value="none">반복 없음</option>
-                <option value="daily">매일</option>
-                <option value="weekly">매주</option>
-                <option value="monthly">매월</option>
-              </select>
-            </label>
-            <Button type="submit" loading={saving}>
-              {editing ? "수정" : "저장"}
-            </Button>
-          </form>
-        </Card>
+      <div className={styles.tabs} role="tablist" aria-label="할 일 보기">
+        {(
+          [
+            ["today", "오늘"],
+            ["upcoming", "예정"],
+            ["history", "기록"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            role="tab"
+            aria-selected={tab === value}
+            className={styles.tab}
+            onClick={() => setTab(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {futureNotice ? (
+        <div className={styles.notice} role="status">
+          <span>{futureNotice}에 추가했어요</span>
+          <button
+            className={styles.link}
+            onClick={() => {
+              setTab("upcoming");
+              setFutureNotice("");
+            }}
+          >
+            예정에서 보기
+          </button>
+        </div>
       ) : null}
-
-      {error ? (
-        <p className="inline-alert" role="alert">
+      {error && tab !== "history" ? (
+        <div className={styles.error} role="alert">
           {error}
+          <Button variant="ghost" onClick={() => void load()}>
+            다시 시도
+          </Button>
+        </div>
+      ) : null}
+      {loading && tab !== "history" ? (
+        <p className={styles.skeleton} role="status">
+          할 일 불러오는 중
         </p>
       ) : null}
-
-      <section className="home-grid" aria-label="오늘 요약" aria-busy={loading}>
-        <Card as="section" tone="lemon" className="pet-summary">
-          <div className="pet-summary__copy">
-            <span className="status-pill">
-              <Sparkles size={14} aria-hidden="true" /> 레몬 펫의 응원
-            </span>
-            <h2>
-              {completed ? `벌써 ${completed}가지나 해냈어요!` : "첫 완료를 기다리고 있어요!"}
-            </h2>
-            <p>
-              {todayItems.length
-                ? "한 번씩 체크할 때마다 레몬 펫이 응원해요."
-                : "오늘 할 일을 하나 만들어 볼까요?"}
-            </p>
-          </div>
-          {petImageUrl ? (
-            // 비공개 그림은 소유자에게 발급된 짧은 signed URL로만 표시한다.
-            <Image
-              src={petImageUrl}
-              alt="내가 직접 그린 레몬 펫"
-              width={240}
-              height={240}
-              unoptimized
-              className="pet-summary__image"
-            />
-          ) : (
-            <Image
-              src="/images/lemon-pet-default.png"
-              alt="두 팔을 들고 응원하는 기본 레몬 펫"
-              width={240}
-              height={240}
-              className="pet-summary__image"
-              priority
-            />
-          )}
-          <ProgressRing completed={completed} total={todayItems.length} />
-        </Card>
-
-        <Card as="section" className="task-section" aria-labelledby="today-tasks-title">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">TODAY</p>
-              <h2 id="today-tasks-title">오늘 할 일</h2>
-            </div>
-            <span className="task-count">
-              {completed} / {todayItems.length}
+      {tab === "today" && !loading ? (
+        <>
+          <div className={styles.toolbar}>
+            <h2 className={styles.sectionTitle}>{ownerToday}</h2>
+            <span className={styles.status}>
+              {todayItems.filter((item) => item.status === "completed").length}/{todayItems.length}{" "}
+              완료
             </span>
           </div>
-          {loading ? <p className="muted-copy">할 일을 불러오는 중이에요…</p> : null}
-          {!loading && todayItems.length === 0 ? (
-            <p className="muted-copy">오늘 할 일이 없어요. 여유를 즐겨도 좋아요.</p>
+          {overdue.length ? (
+            <section className={styles.section}>
+              <h2 className={styles.sectionTitle}>
+                밀린 할 일 <span>{overdue.length}</span>
+              </h2>
+              {rows(overdue, true)}
+            </section>
           ) : null}
-          <ul className="task-list">
-            {todayItems.map((item) => (
-              <TaskRow
-                key={item.id}
-                item={item}
-                onToggle={() => void toggle(item)}
-                onEdit={() => void edit(item)}
-                onDelete={() => void remove(item)}
-                onViewEncouragements={
-                  item.status === "completed" ? () => void openRecord(item) : undefined
-                }
-              />
-            ))}
-          </ul>
-        </Card>
-      </section>
-
-      <Card as="section" className="overdue-card" aria-labelledby="overdue-title">
-        <div className="section-heading section-heading--compact">
-          <div>
-            <p className="eyebrow eyebrow--warm">DON&apos;T FORGET</p>
-            <h2 id="overdue-title">밀린 할 일</h2>
-          </div>
-          <span className="overdue-count">{overdueItems.length}</span>
-        </div>
-        {overdueItems.length === 0 ? (
-          <p className="muted-copy">밀린 할 일이 없어요.</p>
-        ) : (
-          overdueItems.map((item) => (
-            <TaskRow
-              key={item.id}
-              item={item}
-              onToggle={() => void toggle(item)}
-              onEdit={() => void edit(item)}
-              onDelete={() => void remove(item)}
-              overdue
-            />
-          ))
-        )}
-      </Card>
-
-      {completedHistory.length ? (
-        <Card as="section" className="overdue-card" aria-labelledby="history-title">
-          <div className="section-heading section-heading--compact">
-            <div>
-              <p className="eyebrow">DONE</p>
-              <h2 id="history-title">완료 기록</h2>
-            </div>
-            <span className="task-count">{completedHistory.length}</span>
-          </div>
-          <ul className="task-list">
-            {completedHistory.slice(0, 20).map((item) => (
-              <li className="task-row task-row--completed" key={item.id}>
-                <span className="task-check" aria-hidden="true">
-                  <Check size={17} />
-                </span>
-                <span className="task-row__body">
-                  <strong>{item.title_snapshot}</strong>
-                  <small>{item.occurrence_date}</small>
-                </span>
-                <Button size="sm" variant="ghost" onClick={() => void openRecord(item)}>
-                  <MessageCircle size={15} aria-hidden="true" /> 응원 보기
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
-
-      {selectedRecord ? (
-        <Card as="section" className="encouragement-panel" aria-labelledby="encouragement-title">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">CHEERS</p>
-              <h2 id="encouragement-title">받은 응원 · {selectedRecord.title_snapshot}</h2>
-            </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setSelectedRecord(null)}
-              aria-label="응원 닫기"
-            >
-              <X size={16} />
-            </Button>
-          </div>
-          {encouragements.length ? (
-            <ul className="encouragement-list">
-              {encouragements.map((item) => (
-                <li key={item.id}>
-                  <span>🍋</span>
-                  <div>
-                    <strong>{item.authorName}</strong>
-                    <p>{item.message || "레몬 응원을 보냈어요!"}</p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={async () => {
-                      try {
-                        const hidden = item.visibility !== "hidden_by_owner";
-                        await hideEncouragement(item.id, hidden);
-                        setEncouragements((current) =>
-                          current.map((value) =>
-                            value.id === item.id
-                              ? { ...value, visibility: hidden ? "hidden_by_owner" : "visible" }
-                              : value,
-                          ),
-                        );
-                      } catch (cause) {
-                        setError(
-                          cause instanceof Error ? cause.message : "응원 표시를 바꾸지 못했어요.",
-                        );
-                      }
-                    }}
-                  >
-                    {item.visibility === "hidden_by_owner" ? "다시 표시" : "숨기기"}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted-copy">아직 받은 응원이 없어요.</p>
-          )}
-        </Card>
-      ) : null}
-
-      {celebrate ? (
-        <div
-          className="celebration"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="celebration-title"
-        >
-          <div className="celebration__card">
-            {petImageUrl ? (
-              <Image
-                src={petImageUrl}
-                alt="완료를 축하하는 나만의 펫"
-                width={220}
-                height={220}
-                unoptimized
-              />
+          <section className={styles.section} aria-label="오늘 할 일">
+            {todayItems.length ? (
+              rows(todayItems)
             ) : (
-              <Image
-                src="/images/lemon-pet-default.png"
-                alt="완료를 축하하는 레몬 펫"
-                width={220}
-                height={220}
-              />
+              <div className={styles.empty}>오늘 할 일이 없어요</div>
             )}
-            <p className="eyebrow">{demo ? "DEMO PREVIEW" : "+1 LEMON POINT"}</p>
-            <h2 id="celebration-title">정말 잘했어요!</h2>
-            <p>
-              {demo
-                ? "미리보기예요. 실제 포인트 저장과 친구 알림은 Supabase 연결 후 동작해요."
-                : "친구들에게도 완료 소식을 전했어요."}
-            </p>
-            <Button onClick={() => setCelebrate(false)}>계속하기</Button>
+          </section>
+          <Button
+            className={styles.loadMore}
+            variant="ghost"
+            onClick={() => setFrom(addUtcDays(from, -30))}
+          >
+            이전 할 일 더 보기 · {from} 이전
+          </Button>
+          {pet ? (
+            <Link href="/pet/" className={styles.pet}>
+              {pet.url ? (
+                <Image src={pet.url} width={40} height={40} alt="내 펫" />
+              ) : (
+                <Citrus size={28} aria-hidden="true" />
+              )}
+              <span>
+                내 펫<small>{pet.points}포인트</small>
+              </span>
+              <ChevronRight size={18} aria-hidden="true" />
+            </Link>
+          ) : null}
+        </>
+      ) : null}
+      {tab === "upcoming" && !loading ? (
+        <section>
+          <div className={styles.toolbar}>
+            <span className={styles.status}>
+              {ownerToday} 이후 · {to}까지
+            </span>
           </div>
+          {upcoming.length ? (
+            rows(upcoming, true)
+          ) : (
+            <div className={styles.empty}>이 기간에 예정된 할 일이 없어요</div>
+          )}
+          <Button
+            className={styles.loadMore}
+            variant="secondary"
+            onClick={() => setTo(addUtcDays(to, 30))}
+          >
+            다음 30일 보기
+          </Button>
+        </section>
+      ) : null}
+      {tab === "history" ? (
+        <section aria-label="완료 기록">
+          {historyError ? (
+            <div role="alert" className={styles.error}>
+              {historyError}
+              <Button variant="ghost" onClick={() => void loadHistory()}>
+                다시 시도
+              </Button>
+            </div>
+          ) : null}
+          {history.map((item, index) => (
+            <div key={item.occurrence.id}>
+              {!index ||
+              history[index - 1].occurrence.occurrence_date !== item.occurrence.occurrence_date ? (
+                <h3 className={styles.groupDate}>{item.occurrence.occurrence_date}</h3>
+              ) : null}
+              <TaskRowView
+                occurrence={item.occurrence}
+                summary={item.summary}
+                taskDeleted={item.taskDeleted}
+                onOpen={() => open(item.occurrence.id)}
+              />
+            </div>
+          ))}
+          {historyLoading ? (
+            <p role="status" className={styles.skeleton}>
+              기록 불러오는 중
+            </p>
+          ) : null}
+          {!historyLoading && !historyError && !history.length ? (
+            <div className={styles.empty}>완료한 기록이 없어요</div>
+          ) : null}
+          {cursor ? (
+            <Button
+              className={styles.loadMore}
+              variant="secondary"
+              loading={historyLoading}
+              onClick={() => void loadHistory(cursor)}
+            >
+              이전 기록 더 보기
+            </Button>
+          ) : null}
+        </section>
+      ) : null}
+      <Panel
+        open={adding}
+        title="할 일 추가"
+        onClose={() => {
+          setAdding(false);
+          setDiscard(false);
+        }}
+        onBeforeClose={() => {
+          if (editorBusy.current) return false;
+          if (dirty.current) {
+            setDiscard(true);
+            return false;
+          }
+          return true;
+        }}
+      >
+        {discard ? (
+          <section className={styles.inlineConfirm}>
+            <p>작성 중인 내용을 버릴까요?</p>
+            <div className={styles.actions}>
+              <Button variant="secondary" autoFocus onClick={() => setDiscard(false)}>
+                계속 작성
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => {
+                  dirty.current = false;
+                  setAdding(false);
+                  setDiscard(false);
+                }}
+              >
+                내용 버리기
+              </Button>
+            </div>
+          </section>
+        ) : null}
+        <TaskEditor
+          initial={{ title: "", dueDate: ownerToday, dueTime: "", recurrence: "none" }}
+          onDirtyChange={(value) => {
+            dirty.current = value;
+          }}
+          onBusyChange={(busy) => {
+            editorBusy.current = busy;
+          }}
+          onSave={save}
+          onCancel={() => {
+            if (dirty.current) setDiscard(true);
+            else setAdding(false);
+          }}
+        />
+      </Panel>
+      <OccurrenceDetailPanel
+        occurrenceId={selected}
+        encouragementId={targetCheer}
+        onClose={closeDetail}
+        onChanged={refresh}
+      />
+      {feedback ? (
+        <div role="status" className={styles.toast}>
+          {feedback}
         </div>
       ) : null}
     </AppShell>
-  );
-}
-
-function TaskRow({
-  item,
-  onToggle,
-  onEdit,
-  onDelete,
-  onViewEncouragements,
-  overdue = false,
-}: {
-  item: TaskOccurrenceRow;
-  onToggle: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-  onViewEncouragements?: () => void;
-  overdue?: boolean;
-}) {
-  const complete = item.status === "completed";
-  const detail = item.due_time
-    ? item.due_time.slice(0, 5)
-    : recurrenceLabel(item.recurrence_snapshot);
-  return (
-    <li
-      className={`task-row ${complete ? "task-row--completed" : ""} ${overdue ? "task-row--overdue" : ""}`.trim()}
-    >
-      <button
-        type="button"
-        className="task-check"
-        onClick={onToggle}
-        aria-label={`${item.title_snapshot} ${complete ? "완료 취소" : "완료로 표시"}`}
-      >
-        {complete ? <Check size={17} aria-hidden="true" /> : null}
-      </button>
-      <span className="task-row__body">
-        <strong>{item.title_snapshot}</strong>
-        <small>
-          {item.due_time ? (
-            <>
-              <Clock3 size={13} aria-hidden="true" /> {detail}
-            </>
-          ) : (
-            detail || (complete ? "완료했어요" : "한 번만")
-          )}
-        </small>
-      </span>
-      <span className="task-row__actions">
-        {onViewEncouragements ? (
-          <button
-            type="button"
-            onClick={onViewEncouragements}
-            aria-label={`${item.title_snapshot} 응원 보기`}
-          >
-            <MessageCircle size={15} aria-hidden="true" />
-          </button>
-        ) : null}
-        <button type="button" onClick={onEdit} aria-label={`${item.title_snapshot} 수정`}>
-          <PencilLine size={15} aria-hidden="true" />
-        </button>
-        <button type="button" onClick={onDelete} aria-label={`${item.title_snapshot} 삭제`}>
-          <Trash2 size={15} aria-hidden="true" />
-        </button>
-      </span>
-    </li>
   );
 }
