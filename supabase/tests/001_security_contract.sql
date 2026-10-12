@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select extensions.plan(16);
+select extensions.plan(18);
 
 select extensions.is(
   (
@@ -152,6 +152,18 @@ select extensions.ok(
   'one push attempt is claimed per notification and device'
 );
 
+select extensions.ok(
+  not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname in ('list_social_activity', 'list_own_history', 'get_occurrence_detail',
+      'list_encouragement_summaries', 'list_inbox', 'get_inbox_unread_count', 'mark_all_inbox_read')
+      and has_function_privilege('anon', p.oid, 'execute')),
+  'all social read commands deny anonymous execution'
+);
+select extensions.ok(
+  not has_function_privilege('authenticated', 'private.encouragement_summary(bigint)', 'execute')
+    and not has_function_privilege('authenticated', 'private.can_read_occurrence(bigint)', 'execute'),
+  'internal projections cannot be invoked directly'
+);
 select * from extensions.finish();
 
 rollback;

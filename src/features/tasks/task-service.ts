@@ -1,3 +1,15 @@
+import type { CompletionCursor, OwnHistoryItem, OccurrenceDetail } from "@/types/contracts";
+import {
+  parseRead,
+  readError,
+  historyInput,
+  completionCursor,
+  occurrenceSchema,
+  summarySchema,
+  ownerSchema,
+  encouragementSchema,
+  positiveId,
+} from "./read-contract";
 import { z } from "zod";
 
 import { AppError } from "@/lib/errors";
@@ -183,4 +195,53 @@ export async function getOwnOccurrence(
     .single();
   if (error || !data) throw new AppError("NOT_FOUND", "완료 기록을 찾지 못했어요.");
   return data;
+}
+
+export async function listOwnHistory(
+  input: { cursor?: CompletionCursor; limit?: number } = {},
+): Promise<{ items: OwnHistoryItem[]; nextCursor: CompletionCursor | null }> {
+  const values = parseRead(historyInput, input);
+  const { data, error } = await getSupabaseClient().rpc("list_own_history", {
+    cursor_completed_at: values.cursor?.firstCompletedAt ?? null,
+    cursor_occurrence_id: values.cursor?.occurrenceId ?? null,
+    page_limit: values.limit,
+  });
+  readError(error);
+  return parseRead(
+    z.object({
+      items: z.array(
+        z.object({
+          occurrence: occurrenceSchema,
+          taskDeleted: z.boolean(),
+          summary: summarySchema,
+        }),
+      ),
+      nextCursor: completionCursor.nullable(),
+    }),
+    data,
+  );
+}
+export async function getOccurrenceDetail(input: {
+  occurrenceId: number;
+}): Promise<OccurrenceDetail> {
+  const { occurrenceId } = parseRead(z.object({ occurrenceId: positiveId }), input);
+  const { data, error } = await getSupabaseClient().rpc("get_occurrence_detail", {
+    target_occurrence_id: occurrenceId,
+  });
+  readError(error);
+  return parseRead(
+    z.object({
+      occurrence: occurrenceSchema,
+      owner: ownerSchema,
+      taskDeleted: z.boolean(),
+      permissions: z.object({
+        canEdit: z.boolean(),
+        canComplete: z.boolean(),
+        canEncourage: z.boolean(),
+      }),
+      encouragements: z.array(encouragementSchema),
+      summary: summarySchema,
+    }),
+    data,
+  );
 }

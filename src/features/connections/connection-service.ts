@@ -1,3 +1,14 @@
+import { z } from "zod";
+import type { CompletionCursor, SocialActivityItem } from "@/types/contracts";
+import {
+  parseRead,
+  readError,
+  historyInput,
+  completionCursor,
+  occurrenceSchema,
+  summarySchema,
+  ownerSchema,
+} from "@/features/tasks/read-contract";
 import { AppError } from "@/lib/errors";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { ConnectionRequestRow, ConnectionRow } from "@/lib/supabase/database.types";
@@ -138,4 +149,26 @@ export async function getFriendOverview(friendId: string, targetOccurrenceId?: n
     if (data) result.occurrences.push(data);
   }
   return result;
+}
+
+export async function listSocialActivity(
+  input: { friendId?: string; cursor?: CompletionCursor; limit?: number } = {},
+): Promise<{ items: SocialActivityItem[]; nextCursor: CompletionCursor | null }> {
+  const values = parseRead(historyInput.extend({ friendId: z.uuid().optional() }), input);
+  const { data, error } = await getSupabaseClient().rpc("list_social_activity", {
+    target_friend_id: values.friendId ?? null,
+    cursor_completed_at: values.cursor?.firstCompletedAt ?? null,
+    cursor_occurrence_id: values.cursor?.occurrenceId ?? null,
+    page_limit: values.limit,
+  });
+  readError(error);
+  return parseRead(
+    z.object({
+      items: z.array(
+        z.object({ occurrence: occurrenceSchema, owner: ownerSchema, summary: summarySchema }),
+      ),
+      nextCursor: completionCursor.nullable(),
+    }),
+    data,
+  );
 }

@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(103);
+select extensions.plan(139);
 
 select extensions.throws_ok(
   $$insert into auth.users (
@@ -692,6 +692,87 @@ select extensions.is(
   1,
   'deleted encouragement remains as a historical tombstone'
 );
+
+-- Projection contracts use the existing fixture users and an isolated rollback transaction.
+reset role;
+update public.tasks set deleted_at = null where id = (select task_id from public.task_occurrences where id = current_setting('test.owner_occurrence_id')::bigint);
+update public.task_occurrences set status = 'completed', completed_at = first_completed_at
+  where id = current_setting('test.owner_occurrence_id')::bigint;
+update public.encouragements set visibility = 'visible', message = 'Historic cheer'
+  where id = current_setting('test.encouragement_id')::bigint;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
+select extensions.is(jsonb_array_length(public.list_social_activity()->'items'), 1, 'friend activity includes a current completed task');
+select extensions.is(jsonb_array_length(public.list_own_history()->'items'), 0, 'history never returns another owner records');
+select extensions.is((public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)#>>'{permissions,canEncourage}')::boolean, true, 'completed friend record permits encouragement');
+select extensions.is((public.list_encouragement_summaries(array[current_setting('test.owner_occurrence_id')::bigint])#>>'{items,0,summary,count}')::integer, 1, 'visible encouragement appears in summary');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000003', true);
+select extensions.is(jsonb_array_length(public.list_social_activity()->'items'), 0, 'stranger has no activity');
+select extensions.is(jsonb_array_length(public.list_encouragement_summaries(array[current_setting('test.owner_occurrence_id')::bigint])->'items'), 0, 'unreadable summaries are omitted rather than zeroed');
+select extensions.throws_ok($$select public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)$$, 'P0001', 'FORBIDDEN', 'stranger detail is forbidden');
+select extensions.throws_ok($$select public.get_occurrence_detail(9223372036854775807)$$, 'P0001', 'NOT_FOUND', 'missing detail is distinct from forbidden');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
+select public.hide_encouragement(current_setting('test.encouragement_id')::bigint, true);
+select extensions.is((public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)#>>'{summary,count}')::integer, 0, 'hidden encouragement excluded from summary count');
+select extensions.is(public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)#>'{summary,latestMessage}', 'null'::jsonb, 'hidden encouragement excluded from preview');
+select extensions.is(jsonb_array_length(public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)->'encouragements'), 1, 'owner can restore hidden encouragement in detail');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
+select extensions.is(public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)#>>'{summary,myEncouragement,visibility}', 'hidden_by_owner', 'author can edit their own hidden encouragement');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
+select public.reopen_occurrence(current_setting('test.owner_occurrence_id')::bigint);
+select extensions.is(jsonb_array_length(public.list_own_history()->'items'), 1, 'reopened occurrence remains in owner history');
+select extensions.is(jsonb_array_length(public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)->'encouragements'), 1, 'owner retains historical cheers after reopen');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
+select extensions.is(jsonb_array_length(public.list_social_activity()->'items'), 0, 'reopened occurrence leaves friend activity');
+select extensions.is((public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)#>>'{permissions,canEncourage}')::boolean, false, 'reopened occurrence disables friend encouragement');
+select extensions.is(jsonb_array_length(public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)->'encouragements'), 0, 'friend cannot read historical cheers on reopened occurrence');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
+select public.delete_task((public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)#>>'{occurrence,task_id}')::bigint);
+select extensions.is((public.list_own_history()#>>'{items,0,taskDeleted}')::boolean, true, 'owner history includes logically deleted task');
+select extensions.is((public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)#>>'{permissions,canEdit}')::boolean, false, 'deleted historical detail is read only');
+select public.disconnect_friend('00000000-0000-0000-0000-000000000002');
+select extensions.is(jsonb_array_length(public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)->'encouragements'), 1, 'owner historical cheer survives disconnect');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
+select extensions.throws_ok($$select public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)$$, 'P0001', 'FORBIDDEN', 'disconnect revokes friend detail immediately');
+
+reset role;
+insert into public.tasks(owner_id,title,due_date,recurrence) values
+  ('00000000-0000-0000-0000-000000000001','Old A','2000-01-01','none'),
+  ('00000000-0000-0000-0000-000000000001','Old B','2000-01-01','none');
+insert into public.task_occurrences(task_id,owner_id,occurrence_date,title_snapshot,recurrence_snapshot,status,completed_at,first_completed_at)
+  select id,owner_id,due_date,title,recurrence,'completed','2000-01-01T00:00:00Z','2000-01-01T00:00:00Z' from public.tasks where title in ('Old A','Old B');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
+select extensions.is(jsonb_array_length(public.list_own_history()->'items'), 3, 'history has no one-year cutoff');
+select set_config('test.history_cursor', public.list_own_history(null,null,2)->>'nextCursor', true);
+select extensions.is(public.list_own_history(null,null,2)#>>'{items,1,occurrence,title_snapshot}', 'Old B', 'equal timestamps use occurrence id descending');
+select extensions.is(public.list_own_history((current_setting('test.history_cursor')::jsonb->>'firstCompletedAt')::timestamptz,(current_setting('test.history_cursor')::jsonb->>'occurrenceId')::bigint,2)#>>'{items,0,occurrence,title_snapshot}', 'Old A', 'cursor handles tied timestamps without duplicates');
+select extensions.is(public.list_own_history((current_setting('test.history_cursor')::jsonb->>'firstCompletedAt')::timestamptz,(current_setting('test.history_cursor')::jsonb->>'occurrenceId')::bigint,2)->'nextCursor', 'null'::jsonb, 'last history page has no cursor');
+
+reset role;
+delete from public.notifications;
+insert into public.notifications(recipient_id,actor_id,notification_type,occurrence_id,encouragement_id,event_key) values
+('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','encouragement_received',current_setting('test.owner_occurrence_id')::bigint,current_setting('test.encouragement_id')::bigint,'test:cheer');
+select set_config('test.inbox_highwater', (select max(id)::text from public.notifications), true);
+insert into public.notifications(recipient_id,actor_id,notification_type,event_key) values
+('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','connection_accepted','test:accepted'),
+('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','task_completed','test:completed'),
+('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000002','connection_accepted','test:other-recipient');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
+select extensions.is(jsonb_array_length(public.list_inbox()->'items'), 2, 'inbox excludes completions and other recipients');
+select extensions.is((public.get_inbox_unread_count()->>'unreadCount')::integer, 2, 'unread count excludes completion events');
+select extensions.is(jsonb_array_length(public.list_inbox('encouragement')->'items'), 1, 'encouragement filter is exact');
+select extensions.is(public.list_inbox('encouragement')#>>'{items,0,availability}', 'available', 'owner can open hidden historical encouragement detail');
+select extensions.is(public.list_inbox('encouragement')#>'{items,0,messagePreview}', 'null'::jsonb, 'hidden message cannot leak in inbox');
+select extensions.is(public.list_inbox('encouragement')#>>'{items,0,taskTitle}', 'Owner task', 'readable historical task title remains available');
+select extensions.is(public.list_inbox('connection')#>'{items,0,target}', 'null'::jsonb, 'stale acceptance has no private target');
+select extensions.is((public.mark_all_inbox_read(current_setting('test.inbox_highwater')::bigint)->>'updatedCount')::integer, 1, 'mark-all is bounded by observed highwater');
+select extensions.is((public.get_inbox_unread_count()->>'unreadCount')::integer, 1, 'newer direct notification stays unread');
+select extensions.is((select count(*)::integer from public.notifications where notification_type='task_completed' and read_at is null), 1, 'mark-all does not touch completion event state');
+select set_config('request.jwt.claim.sub', '', true);
+select extensions.throws_ok($$select public.list_own_history()$$, 'P0001', 'UNAUTHENTICATED', 'missing session cannot query owner history');
+reset role;
 
 select * from extensions.finish();
 rollback;
