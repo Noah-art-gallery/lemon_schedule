@@ -1,13 +1,13 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { TopBar } from "@/components/layout/top-bar";
 import { useAuth } from "@/features/auth/auth-provider";
 import { listenForPushNavigation } from "@/features/push/push-service";
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { useInboxUnreadCount } from "@/features/notifications/inbox-events";
 
 interface AppShellProps {
   children: ReactNode;
@@ -15,8 +15,8 @@ interface AppShellProps {
 }
 
 export function AppShell({ children, notificationCount }: AppShellProps) {
-  const { status, demo, user } = useAuth();
-  const [unreadCount, setUnreadCount] = useState(0);
+  const { status, demo } = useAuth();
+  const unreadCount = useInboxUnreadCount();
 
   useEffect(() => {
     if (status === "unauthenticated") window.location.replace("/login/");
@@ -24,52 +24,16 @@ export function AppShell({ children, notificationCount }: AppShellProps) {
 
   useEffect(() => {
     let cleanup: (() => Promise<void>) | undefined;
+    let active = true;
     void listenForPushNavigation().then((next) => {
-      cleanup = next;
+      if (active) cleanup = next;
+      else void next();
     });
     return () => {
+      active = false;
       void cleanup?.();
     };
   }, []);
-
-  useEffect(() => {
-    if (!user || demo) return;
-    const client = getSupabaseClient();
-    let active = true;
-    const refresh = async () => {
-      const { count, error } = await client
-        .from("notifications")
-        .select("id", { count: "exact", head: true })
-        .eq("recipient_id", user.id)
-        .is("read_at", null);
-      if (active && !error) setUnreadCount(count ?? 0);
-    };
-    void refresh();
-    const refreshOnFocus = () => void refresh();
-    window.addEventListener("focus", refreshOnFocus);
-    window.addEventListener("lemon:notifications-changed", refreshOnFocus);
-    const channel = client
-      .channel(`unread-notifications-${user.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "notifications",
-          filter: `recipient_id=eq.${user.id}`,
-        },
-        () => {
-          void refresh();
-        },
-      )
-      .subscribe();
-    return () => {
-      active = false;
-      window.removeEventListener("focus", refreshOnFocus);
-      window.removeEventListener("lemon:notifications-changed", refreshOnFocus);
-      void client.removeChannel(channel);
-    };
-  }, [user, demo]);
 
   if (status === "loading" || status === "unauthenticated") {
     return (
