@@ -95,13 +95,18 @@ export function PetCanvas({ onSave, strokeColor, onDirtyChange }: PetCanvasProps
     setSaving(true);
     try {
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+      // Serialization may finish after the owner discarded this drawing or left the page.
+      // Only the still-mounted canvas may publish its result.
+      if (canvasRef.current !== canvas) return;
       if (!blob) throw new Error("그림을 준비하지 못했어요. 다시 시도해 주세요");
       await onSave(blob);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "그림을 저장하지 못했어요");
+      if (canvasRef.current === canvas) {
+        setError(cause instanceof Error ? cause.message : "그림을 저장하지 못했어요");
+      }
     } finally {
       savingRef.current = false;
-      setSaving(false);
+      if (canvasRef.current === canvas) setSaving(false);
     }
   }
 
