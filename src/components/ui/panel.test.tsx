@@ -43,6 +43,61 @@ describe("Panel", () => {
     expect(document.body.style.overflow).not.toBe("hidden");
   });
 
+  it("skips controls inside a hidden preserved form when wrapping focus", async () => {
+    const user = userEvent.setup();
+    render(
+      <Panel open title="수정 취소" history={false} onClose={vi.fn()}>
+        <button>계속 수정</button>
+        <button>수정 취소</button>
+        <div hidden>
+          <button>기존 폼 저장</button>
+        </div>
+      </Panel>,
+    );
+    expect(screen.getByRole("button", { name: "닫기" })).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(screen.getByRole("button", { name: "수정 취소" })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("button", { name: "닫기" })).toHaveFocus();
+  });
+
+  it("includes a details summary in the focus loop but excludes its collapsed contents", async () => {
+    const user = userEvent.setup();
+    render(
+      <Panel open title="할 일" history={false} onClose={vi.fn()}>
+        <button>응원</button>
+        <details>
+          <summary>더보기</summary>
+          <button>삭제</button>
+        </details>
+      </Panel>,
+    );
+    await user.tab({ shift: true });
+    expect(screen.getByText("더보기")).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("button", { name: "닫기" })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("button", { name: "응원" })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByText("더보기")).toHaveFocus();
+  });
+
+  it("falls back to a visible control when the requested initial field is hidden", () => {
+    function HiddenInitialField() {
+      const field = useRef<HTMLInputElement>(null);
+      return (
+        <Panel open title="수정 취소" history={false} onClose={vi.fn()} initialFocusRef={field}>
+          <div hidden>
+            <input ref={field} aria-label="보존된 제목" />
+          </div>
+          <button>계속 수정</button>
+        </Panel>
+      );
+    }
+    render(<HiddenInitialField />);
+    expect(screen.getByRole("button", { name: "닫기" })).toHaveFocus();
+  });
+
   it("allows a dirty form to veto Escape and backdrop dismissal", async () => {
     const onClose = vi.fn();
     const user = userEvent.setup();

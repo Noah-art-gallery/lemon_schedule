@@ -20,7 +20,34 @@ export interface PanelProps {
 }
 
 const focusableSelector =
-  'button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])';
+  'button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), summary, [tabindex]:not([tabindex="-1"])';
+
+function isAvailableForFocus(item: HTMLElement) {
+  if (item.matches(':disabled, input[type="hidden"]')) return false;
+  for (let ancestor: HTMLElement | null = item; ancestor; ancestor = ancestor.parentElement) {
+    if (ancestor.hidden || ancestor.inert || ancestor.getAttribute("aria-hidden") === "true")
+      return false;
+    const style = window.getComputedStyle(ancestor);
+    if (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.visibility === "collapse"
+    )
+      return false;
+    if (ancestor instanceof HTMLDetailsElement && !ancestor.open) {
+      const summary = Array.from(ancestor.children).find((child) => child.tagName === "SUMMARY");
+      if (!summary?.contains(item)) return false;
+    }
+  }
+  return true;
+}
+
+function focusTargets(element: HTMLElement) {
+  return Array.from(element.querySelectorAll<HTMLElement>(focusableSelector)).filter((item) => {
+    const tabIndex = item.getAttribute("tabindex");
+    return (tabIndex === null || Number(tabIndex) >= 0) && isAvailableForFocus(item);
+  });
+}
 
 let pendingHistoryBack: Promise<void> | null = null;
 
@@ -76,11 +103,12 @@ export function Panel({
     background.forEach((child) => {
       child.inert = true;
     });
-    (
-      initialFocusRef?.current ??
-      element.querySelector<HTMLElement>(focusableSelector) ??
-      element
-    ).focus({ preventScroll: true });
+    const requestedFocus = initialFocusRef?.current;
+    const initialFocus =
+      requestedFocus && isAvailableForFocus(requestedFocus)
+        ? requestedFocus
+        : (focusTargets(element)[0] ?? element);
+    initialFocus.focus({ preventScroll: true });
 
     const historyId = `${titleId}-${Date.now()}`;
     let active = true;
@@ -111,9 +139,7 @@ export function Panel({
         if (callbacks.current.onBeforeClose?.() !== false) callbacks.current.onClose("escape");
       }
       if (event.key !== "Tab") return;
-      const targets = Array.from(element.querySelectorAll<HTMLElement>(focusableSelector)).filter(
-        (item) => !item.hidden && item.getAttribute("aria-hidden") !== "true",
-      );
+      const targets = focusTargets(element);
       const first = targets[0];
       const last = targets[targets.length - 1];
       if (!first) {
