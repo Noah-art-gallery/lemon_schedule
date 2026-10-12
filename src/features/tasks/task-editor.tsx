@@ -24,7 +24,14 @@ export function TaskEditor({
   const lock = useRef(false);
   const title = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    title.current?.focus();
+    let active = true;
+    // Let the enclosing panel capture its opening control before moving into the form.
+    queueMicrotask(() => {
+      if (active) title.current?.focus();
+    });
+    return () => {
+      active = false;
+    };
   }, []);
   function change(next: Partial<TaskInput>) {
     const updated = { ...values, ...next };

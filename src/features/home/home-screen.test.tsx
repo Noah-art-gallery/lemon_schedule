@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { HomeScreen } from "./home-screen";
@@ -5,7 +6,11 @@ vi.mock("@/components/layout/app-shell", () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
 }));
 it("loads the demo list and exposes future tasks and deleted completion history", async () => {
-  render(<HomeScreen />);
+  render(
+    <StrictMode>
+      <HomeScreen />
+    </StrictMode>,
+  );
   expect(await screen.findByText("영어 단어 10개")).toBeVisible();
   fireEvent.click(screen.getByRole("tab", { name: "예정" }));
   expect(await screen.findByText("주말 독서")).toBeVisible();

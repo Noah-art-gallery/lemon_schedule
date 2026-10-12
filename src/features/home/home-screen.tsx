@@ -65,7 +65,7 @@ export function HomeScreen() {
   const [futureNotice, setFutureNotice] = useState("");
   const [feedback, setFeedback] = useState("");
   const [pet, setPet] = useState<{ url: string | null; points: number } | null>(
-    demo ? { url: null, points: 10 } : null,
+    demo ? { url: null, points: 2 } : null,
   );
   const generation = useRef(0);
   const historyGeneration = useRef(0);
@@ -83,7 +83,7 @@ export function HomeScreen() {
         const rows = demoListOwn();
         setItems(rows);
         setPet((previous) =>
-          previous ? { ...previous, points: demoListHistory().length * 5 } : previous,
+          previous ? { ...previous, points: demoListHistory().length } : previous,
         );
         setSummaries(new Map(rows.map((row) => [row.id, demoSummary(row.id)])));
       } else {
@@ -245,7 +245,7 @@ export function HomeScreen() {
     try {
       if (demo) {
         if (demoToggleOccurrence(row.id).firstCompletion) {
-          setFeedback("완료 · 펫이 5포인트 성장했어요 · 미리보기");
+          setFeedback("완료 · 펫이 1포인트 성장했어요 · 미리보기");
         }
       } else if (row.status === "completed") {
         await reopenOccurrence(row.id);

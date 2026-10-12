@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { Panel } from "@/components/ui/panel";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { EncouragementComposer } from "@/features/encouragements/encouragement-composer";
@@ -45,4 +47,30 @@ describe("task interaction preservation", () => {
     );
     expect(screen.getByLabelText("할 일")).toHaveValue("책 읽기");
   });
+});
+
+it("restores the opening control after editor title focus and successful close", async () => {
+  function EditorHost() {
+    const [open, setOpen] = useState(false);
+    return (
+      <>
+        <button onClick={() => setOpen(true)}>일정 열기</button>
+        <Panel history={false} open={open} title="새 일정" onClose={() => setOpen(false)}>
+          <TaskEditor
+            initial={{ title: "독서", dueDate: "2026-10-12", dueTime: "", recurrence: "none" }}
+            onDirtyChange={() => {}}
+            onCancel={() => setOpen(false)}
+            onSave={async () => setOpen(false)}
+          />
+        </Panel>
+      </>
+    );
+  }
+  render(<EditorHost />);
+  const trigger = screen.getByRole("button", { name: "일정 열기" });
+  trigger.focus();
+  fireEvent.click(trigger);
+  await waitFor(() => expect(screen.getByLabelText("할 일")).toHaveFocus());
+  fireEvent.click(screen.getByRole("button", { name: "할 일 추가" }));
+  await waitFor(() => expect(trigger).toHaveFocus());
 });

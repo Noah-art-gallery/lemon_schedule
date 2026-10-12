@@ -60,6 +60,7 @@ export function OccurrenceDetailPanel({
   const [editor, setEditor] = useState<TaskInput | null>(null);
   const [discard, setDiscard] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleteCheer, setDeleteCheer] = useState<number | null>(null);
   const [effectiveId, setEffectiveId] = useState(occurrenceId);
   const [composerVersion, setComposerVersion] = useState(0);
   const [feedback, setFeedback] = useState("");
@@ -111,6 +112,7 @@ export function OccurrenceDetailPanel({
       setDetail(null);
       setEditor(null);
       setDeleteConfirm(false);
+      setDeleteCheer(null);
       setComposerVersion((value) => value + 1);
       dirty.current = false;
       if (effectiveId !== null) void load(effectiveId);
@@ -258,14 +260,7 @@ export function OccurrenceDetailPanel({
                     <button
                       className={styles.danger}
                       disabled={saving}
-                      onClick={() =>
-                        void mutation(async () => {
-                          if (demo) demoDeleteEncouragement(item.id);
-                          else await deleteEncouragement(item.id);
-                          setComposerVersion((value) => value + 1);
-                          dirty.current = false;
-                        })
-                      }
+                      onClick={() => setDeleteCheer(item.id)}
                     >
                       응원 삭제
                     </button>
@@ -371,7 +366,12 @@ export function OccurrenceDetailPanel({
           }}
           onSave={async (values) => {
             if (demo) demoUpdateTask(detail.occurrence.task_id, values);
-            else await updateTask({ taskId: detail.occurrence.task_id, ...values });
+            else
+              await updateTask({
+                taskId: detail.occurrence.task_id,
+                ...values,
+                dueTime: values.dueTime || null,
+              });
             dirty.current = false;
             setEditor(null);
             callbacks.current.onChanged?.();
@@ -420,7 +420,7 @@ export function OccurrenceDetailPanel({
                   void mutation(async () => {
                     if (demo) {
                       if (demoToggleOccurrence(detail.occurrence.id).firstCompletion)
-                        setFeedback("완료 · 펫이 5포인트 성장했어요");
+                        setFeedback("완료 · 펫이 1포인트 성장했어요");
                     } else if (detail.occurrence.status === "completed")
                       await reopenOccurrence(detail.occurrence.id);
                     else {
@@ -465,6 +465,36 @@ export function OccurrenceDetailPanel({
                   }
                 >
                   할 일 삭제
+                </Button>
+              </div>
+            </section>
+          ) : null}
+          {deleteCheer !== null ? (
+            <section className={styles.inlineConfirm} aria-label="응원 삭제 확인">
+              <p>보낸 응원을 삭제할까요? 작성 중인 내용도 함께 지워집니다.</p>
+              <div className={styles.actions}>
+                <Button
+                  variant="secondary"
+                  autoFocus
+                  disabled={saving}
+                  onClick={() => setDeleteCheer(null)}
+                >
+                  취소
+                </Button>
+                <Button
+                  variant="danger"
+                  loading={saving}
+                  onClick={() =>
+                    void mutation(async () => {
+                      if (demo) demoDeleteEncouragement(deleteCheer);
+                      else await deleteEncouragement(deleteCheer);
+                      setDeleteCheer(null);
+                      setComposerVersion((value) => value + 1);
+                      dirty.current = false;
+                    })
+                  }
+                >
+                  삭제 확인
                 </Button>
               </div>
             </section>
