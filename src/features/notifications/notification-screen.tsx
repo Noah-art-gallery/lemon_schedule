@@ -38,10 +38,22 @@ function NotificationContent() {
   const [reading, setReading] = useState(false);
   const [selected, setSelected] = useState<InboxItem | null>(null);
   const [resolved, setResolved] = useState(false);
+  const returnFocusId = useRef<number | null>(null);
+  useEffect(() => {
+    if (selected || loading || returnFocusId.current === null) return;
+    const row = document.getElementById(`inbox-item-${returnFocusId.current}`);
+    const fallback = document.getElementById(`inbox-filter-${filter}`);
+    (row ?? fallback)?.focus({ preventScroll: true });
+    returnFocusId.current = null;
+  }, [selected, loading, items, filter]);
   const selectedRef = useRef(selected);
   useEffect(() => {
     selectedRef.current = selected;
   }, [selected]);
+  const loadedBoundary = useRef<{ scope: string; oldestId: number | null }>({
+    scope: "",
+    oldestId: null,
+  });
   const generation = useRef(0);
   const paging = useRef(false);
   const readLock = useRef(false);
@@ -52,8 +64,11 @@ function NotificationContent() {
       const version = ++generation.current;
       const key = `${account}:${filter}`;
       const target = selectedRef.current;
+      const oldestId =
+        loadedBoundary.current.scope === key ? loadedBoundary.current.oldestId : null;
       const clearTarget = () => {
         if (target && selectedRef.current?.id === target.id) {
+          returnFocusId.current = target.id;
           setSelected(null);
           setResolved(false);
         }
@@ -69,6 +84,18 @@ function NotificationContent() {
         if (!demo && !userId) return;
         const page = demo ? demoListInbox({ filter }) : await listInbox({ filter });
         if (version !== generation.current) return;
+        while (
+          oldestId !== null &&
+          page.nextCursor !== null &&
+          (page.items.at(-1)?.id ?? Infinity) > oldestId
+        ) {
+          const next = demo
+            ? demoListInbox({ filter, cursor: page.nextCursor })
+            : await listInbox({ filter, cursor: page.nextCursor });
+          if (version !== generation.current) return;
+          page.items.push(...next.items);
+          page.nextCursor = next.nextCursor;
+        }
         if (invalidate && target) {
           let fresh = page.items.find((item) => item.id === target.id);
           if (!fresh) {
@@ -86,6 +113,7 @@ function NotificationContent() {
           )
             clearTarget();
         }
+        loadedBoundary.current = { scope: key, oldestId: page.items.at(-1)?.id ?? null };
         setItems(page.items);
         setCursor(page.nextCursor);
         setLoadedScope(key);
@@ -122,6 +150,10 @@ function NotificationContent() {
     try {
       const page = demo ? demoListInbox({ filter, cursor }) : await listInbox({ filter, cursor });
       if (version !== generation.current) return;
+      loadedBoundary.current = {
+        scope: `${account}:${filter}`,
+        oldestId: page.items.at(-1)?.id ?? loadedBoundary.current.oldestId,
+      };
       setItems((current) => {
         const known = new Set(current.map((item) => item.id));
         return [...current, ...page.items.filter((item) => !known.has(item.id))];
@@ -208,6 +240,7 @@ function NotificationContent() {
           <button
             key={item.key}
             type="button"
+            id={`inbox-filter-${item.key}`}
             aria-pressed={filter === item.key}
             onClick={() => setFilter(item.key)}
           >
@@ -251,6 +284,7 @@ function NotificationContent() {
               type="button"
               className={`${styles.row} ${item.readAt ? styles.read : ""}`}
               key={item.id}
+              id={`inbox-item-${item.id}`}
               onClick={() => open(item)}
             >
               <span className={styles.icon} aria-hidden="true">
@@ -327,6 +361,7 @@ function NotificationContent() {
             occurrenceId={selected.occurrenceId}
             encouragementId={selected.encouragementId}
             onClose={() => {
+              returnFocusId.current = selected.id;
               setSelected(null);
               setResolved(false);
             }}
