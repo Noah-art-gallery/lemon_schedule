@@ -12,11 +12,98 @@ import { toDateKey } from "@/lib/time";
 import { addUtcDays } from "./recurrence";
 import type { TaskInput } from "./task-service";
 
+import type { ConnectionData } from "@/features/connections/connection-service";
+
 export const DEMO_OWNER_ID = "demo";
 export const demoFriends = [
   { id: "demo-friend-1", displayName: "지민" },
   { id: "demo-friend-2", displayName: "서연" },
 ];
+const connectedIds = new Set(demoFriends.map((friend) => friend.id));
+const blockedIds = new Set<string>();
+let requests: ConnectionData["incoming"] = [
+  {
+    id: 41,
+    requester_id: "demo-requester-1",
+    addressee_id: DEMO_OWNER_ID,
+    displayName: "민서",
+    status: "pending",
+    created_at: new Date().toISOString(),
+    responded_at: null,
+    pair_low: DEMO_OWNER_ID,
+    pair_high: "demo-requester",
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 42,
+    requester_id: DEMO_OWNER_ID,
+    addressee_id: "demo-requester-2",
+    displayName: "준호",
+    status: "pending",
+    created_at: new Date().toISOString(),
+    responded_at: null,
+    pair_low: DEMO_OWNER_ID,
+    pair_high: "demo-requester",
+    updated_at: new Date().toISOString(),
+  },
+];
+export function demoGetConnections(): ConnectionData {
+  return {
+    friends: demoFriends
+      .filter((friend) => connectedIds.has(friend.id))
+      .map((friend) => ({ ...friend })),
+    incoming: requests
+      .filter((request) => request.addressee_id === DEMO_OWNER_ID)
+      .map((request) => ({ ...request })),
+    outgoing: requests
+      .filter((request) => request.requester_id === DEMO_OWNER_ID)
+      .map((request) => ({ ...request })),
+  };
+}
+export function demoDisconnectFriend(friendId: string, blocked = false) {
+  connectedIds.delete(friendId);
+  if (blocked) blockedIds.add(friendId);
+  requests = requests.filter(
+    (request) => request.requester_id !== friendId && request.addressee_id !== friendId,
+  );
+  emit();
+}
+export function demoRespondRequest(id: number, accept: boolean) {
+  const request = requests.find((item) => item.id === id && item.addressee_id === DEMO_OWNER_ID);
+  if (!request) throw new AppError("NOT_FOUND", "연결 요청을 찾지 못했어요");
+  if (accept) {
+    connectedIds.add(request.requester_id);
+    if (!demoFriends.some((friend) => friend.id === request.requester_id))
+      demoFriends.push({ id: request.requester_id, displayName: request.displayName });
+  }
+  requests = requests.filter((item) => item.id !== id);
+  emit();
+}
+export function demoCancelRequest(id: number) {
+  requests = requests.filter((item) => item.id !== id);
+  emit();
+}
+export function demoRequestConnection(code: string) {
+  if (!code.trim() || code === "LEMON0001")
+    throw new AppError("INVALID_INPUT", "상대의 초대 코드를 확인해 주세요");
+  const id = `demo-invite-${code.trim().toUpperCase()}`;
+  if (blockedIds.has(id)) throw new AppError("FORBIDDEN", "차단된 사용자와는 연결할 수 없어요");
+  if (requests.some((request) => request.addressee_id === id))
+    throw new AppError("CONFLICT", "이미 보낸 요청이 있어요");
+  requests.push({
+    id: nextId++,
+    requester_id: DEMO_OWNER_ID,
+    addressee_id: id,
+    displayName: code.trim().toUpperCase(),
+    status: "pending",
+    created_at: new Date().toISOString(),
+    responded_at: null,
+    pair_low: DEMO_OWNER_ID,
+    pair_high: "demo-requester",
+    updated_at: new Date().toISOString(),
+  });
+  emit();
+}
 const today = () => toDateKey(new Date(), "Asia/Seoul");
 let records: TaskOccurrenceRow[] = [];
 let tasks: TaskRow[] = [];
@@ -164,6 +251,7 @@ export function demoListSocial(friendId?: string): SocialActivityItem[] {
     .filter(
       (item) =>
         item.owner_id !== DEMO_OWNER_ID &&
+        connectedIds.has(item.owner_id) &&
         (!friendId || item.owner_id === friendId) &&
         item.status === "completed" &&
         !tasks.find((task) => task.id === item.task_id)?.deleted_at,
@@ -180,7 +268,9 @@ export function demoListFriend(friendId: string) {
   return records
     .filter(
       (item) =>
-        item.owner_id === friendId && !tasks.find((task) => task.id === item.task_id)?.deleted_at,
+        connectedIds.has(friendId) &&
+        item.owner_id === friendId &&
+        !tasks.find((task) => task.id === item.task_id)?.deleted_at,
     )
     .map((item) => ({ ...item }));
 }
@@ -189,6 +279,8 @@ export function demoGetDetail(id: number): OccurrenceDetail {
   const occurrence = records.find((item) => item.id === id);
   if (!occurrence) throw new AppError("NOT_FOUND", "할 일을 찾지 못했어요");
   const own = occurrence.owner_id === DEMO_OWNER_ID;
+  if (!own && !connectedIds.has(occurrence.owner_id))
+    throw new AppError("FORBIDDEN", "연결이 해제되어 할 일을 볼 수 없어요");
   const taskDeleted = Boolean(tasks.find((task) => task.id === occurrence.task_id)?.deleted_at);
   if (taskDeleted && !own) throw new AppError("NOT_FOUND", "할 일을 찾지 못했어요");
   return {
