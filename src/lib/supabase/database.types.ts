@@ -183,6 +183,31 @@ export type Database = {
       };
     };
     Functions: {
+      list_social_activity: {
+        Args: {
+          target_friend_id: string | null;
+          cursor_completed_at: string | null;
+          cursor_occurrence_id: number | null;
+          page_limit: number;
+        };
+        Returns: Json;
+      };
+      list_own_history: {
+        Args: {
+          cursor_completed_at: string | null;
+          cursor_occurrence_id: number | null;
+          page_limit: number;
+        };
+        Returns: Json;
+      };
+      get_occurrence_detail: { Args: { target_occurrence_id: number }; Returns: Json };
+      list_encouragement_summaries: { Args: { occurrence_ids: number[] }; Returns: Json };
+      list_inbox: {
+        Args: { inbox_filter: string; cursor_id: number | null; page_limit: number };
+        Returns: Json;
+      };
+      get_inbox_unread_count: { Args: Record<string, never>; Returns: Json };
+      mark_all_inbox_read: { Args: { through_id: number }; Returns: Json };
       set_pet_decorations: {
         Args: {
           target_color: "leaf-green" | "lemon-yellow";

@@ -1,3 +1,5 @@
+import { reactionValues, type InboxFilter, type InboxItem } from "@/types/contracts";
+import { parseRead, readError, positiveId } from "@/features/tasks/read-contract";
 import { AppError } from "@/lib/errors";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { NotificationRow } from "@/lib/supabase/database.types";
@@ -30,14 +32,19 @@ export function splitNotificationPage(rows: NotificationRow[]): {
 }
 
 export function notificationTarget(
-  item: Pick<NotificationRow, "notification_type" | "actor_id" | "occurrence_id">,
+  item: Pick<NotificationRow, "notification_type" | "actor_id" | "occurrence_id"> &
+    Partial<Pick<NotificationRow, "encouragement_id" | "connection_request_id">>,
 ): string {
   if (item.notification_type === "task_completed" && item.actor_id && item.occurrence_id) {
     return `/friends/?friend=${encodeURIComponent(item.actor_id)}&occurrence=${item.occurrence_id}`;
   }
   if (item.notification_type === "encouragement_received" && item.occurrence_id) {
-    return `/?occurrence=${item.occurrence_id}`;
+    return `/?occurrence=${item.occurrence_id}${item.encouragement_id ? `&encouragement=${item.encouragement_id}` : ""}`;
   }
+  if (item.notification_type === "connection_request" && item.connection_request_id)
+    return `/friends/?request=${item.connection_request_id}`;
+  if (item.notification_type === "connection_accepted" && item.actor_id)
+    return `/friends/?friend=${encodeURIComponent(item.actor_id)}`;
   return "/friends/";
 }
 
@@ -53,6 +60,11 @@ export async function listNotifications(input: {
     .from("notifications")
     .select("*")
     .eq("recipient_id", userId)
+    .in("notification_type", [
+      "encouragement_received",
+      "connection_request",
+      "connection_accepted",
+    ])
     .order("id", { ascending: false })
     .limit(pageSize + 1);
   if (cursor) query = query.lt("id", cursor);
@@ -90,13 +102,82 @@ export async function markNotificationRead(notificationId: number): Promise<bool
 export async function markAllNotificationsRead(
   userId: string,
 ): Promise<{ updatedCount: number; readAt: string }> {
-  const readAt = new Date().toISOString();
   const { data, error } = await getSupabaseClient()
     .from("notifications")
-    .update({ read_at: readAt })
+    .select("id")
     .eq("recipient_id", userId)
-    .is("read_at", null)
-    .select("id");
-  if (error) throw new AppError("INVALID_INPUT", "알림을 읽음 처리하지 못했어요.");
-  return { updatedCount: data.length, readAt };
+    .in("notification_type", [
+      "encouragement_received",
+      "connection_request",
+      "connection_accepted",
+    ])
+    .order("id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new AppError("INVALID_INPUT", "소식을 읽음 처리하지 못했어요");
+  return data
+    ? markAllInboxRead({ throughId: data.id })
+    : { updatedCount: 0, readAt: new Date().toISOString() };
+}
+
+export async function listInbox(input: {
+  filter: InboxFilter;
+  cursor?: number;
+  limit?: number;
+}): Promise<{ items: InboxItem[]; nextCursor: number | null }> {
+  const values = parseRead(
+    z.object({
+      filter: z.enum(["all", "encouragement", "connection"]),
+      cursor: positiveId.optional(),
+      limit: positiveId.max(100).default(50),
+    }),
+    input,
+  );
+  const { data, error } = await getSupabaseClient().rpc("list_inbox", {
+    inbox_filter: values.filter,
+    cursor_id: values.cursor ?? null,
+    page_limit: values.limit,
+  });
+  readError(error);
+  return parseRead(
+    z.object({
+      items: z.array(
+        z.object({
+          id: positiveId,
+          type: z.enum(["encouragement_received", "connection_request", "connection_accepted"]),
+          actorName: z.string(),
+          createdAt: z.string(),
+          readAt: z.string().nullable(),
+          occurrenceId: positiveId.nullable(),
+          encouragementId: positiveId.nullable(),
+          connectionRequestId: positiveId.nullable(),
+          target: z.string().nullable(),
+          availability: z.enum(["available", "unavailable"]),
+          taskTitle: z.string().nullable(),
+          messagePreview: z.string().nullable(),
+          reaction: z.enum(reactionValues).nullable(),
+        }),
+      ),
+      nextCursor: positiveId.nullable(),
+    }),
+    data,
+  );
+}
+export async function getInboxUnreadCount(): Promise<{ unreadCount: number }> {
+  const { data, error } = await getSupabaseClient().rpc("get_inbox_unread_count", {});
+  readError(error);
+  return parseRead(z.object({ unreadCount: z.number().int().nonnegative() }), data);
+}
+export async function markAllInboxRead(input: {
+  throughId: number;
+}): Promise<{ updatedCount: number; readAt: string }> {
+  const { throughId } = parseRead(z.object({ throughId: positiveId }), input);
+  const { data, error } = await getSupabaseClient().rpc("mark_all_inbox_read", {
+    through_id: throughId,
+  });
+  readError(error);
+  return parseRead(
+    z.object({ updatedCount: z.number().int().nonnegative(), readAt: z.string() }),
+    data,
+  );
 }

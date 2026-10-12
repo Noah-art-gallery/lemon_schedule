@@ -228,6 +228,46 @@ assert.match(
 );
 assert.doesNotMatch(webhookBody, /[a-f0-9]{64}/, "webhook must not embed a secret literal");
 
+for (const rpc of [
+  "list_social_activity",
+  "list_own_history",
+  "get_occurrence_detail",
+  "list_encouragement_summaries",
+  "list_inbox",
+  "get_inbox_unread_count",
+  "mark_all_inbox_read",
+]) {
+  const body = sql.match(new RegExp(`create function public\\.${rpc}\\([\\s\\S]*?\\n\\$\\$;`))?.[0];
+  assert.ok(body, `${rpc} read contract missing`);
+  assert.match(body, /set search_path = ''/, `${rpc} pins search path`);
+  assert.match(body, /auth\.uid\(\) is null/, `${rpc} requires authentication`);
+  assert.match(
+    sql,
+    new RegExp(`revoke all on function public\\.${rpc}\\([^;]+from public, anon`),
+    `${rpc} denies anonymous access`,
+  );
+}
+const readSql = readFileSync(
+  join(migrationDirectory, "20261012120000_social_read_models.sql"),
+  "utf8",
+);
+assert.match(
+  readSql,
+  /\(o\.first_completed_at, o\.id\) < \(cursor_completed_at, cursor_occurrence_id\)/,
+  "completion feeds use stable keyset pagination",
+);
+assert.match(readSql, /id <= through_id/, "mark all honors a high-water boundary");
+assert.match(
+  readSql,
+  /visibility = 'visible'/,
+  "hidden encouragements cannot enter public previews",
+);
+assert.match(
+  readSql,
+  /private\.can_read_occurrence\(o\.id\)/,
+  "batch summaries omit unauthorized targets",
+);
+
 console.log(
   `SQL contract checks passed (${protectedTables.length} RLS tables, ${migrations.length} migration).`,
 );

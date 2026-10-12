@@ -1,3 +1,5 @@
+import type { EncouragementSummary } from "@/types/contracts";
+import { parseRead, readError, positiveId, summarySchema } from "@/features/tasks/read-contract";
 import { AppError } from "@/lib/errors";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { EncouragementRow } from "@/lib/supabase/database.types";
@@ -77,4 +79,21 @@ export async function deleteEncouragement(
   if (error) throw new AppError("INVALID_INPUT", "응원을 삭제하지 못했어요.");
   if (!data) throw new AppError("NOT_FOUND", "응원을 찾지 못했어요.");
   return { encouragementId, visibility: "deleted_by_author" };
+}
+
+export async function listEncouragementSummaries(input: {
+  occurrenceIds: number[];
+}): Promise<{ items: Array<{ occurrenceId: number; summary: EncouragementSummary }> }> {
+  const { occurrenceIds } = parseRead(
+    z.object({ occurrenceIds: z.array(positiveId).max(100) }),
+    input,
+  );
+  const { data, error } = await getSupabaseClient().rpc("list_encouragement_summaries", {
+    occurrence_ids: [...new Set(occurrenceIds)],
+  });
+  readError(error);
+  return parseRead(
+    z.object({ items: z.array(z.object({ occurrenceId: positiveId, summary: summarySchema })) }),
+    data,
+  );
 }

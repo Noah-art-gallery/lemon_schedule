@@ -50,3 +50,58 @@ export interface TodaySummary {
   percent: number | null;
   empty: boolean;
 }
+
+export interface CompletionCursor {
+  firstCompletedAt: string;
+  occurrenceId: number;
+}
+export interface EncouragementSummary {
+  count: number;
+  reactions: Record<Reaction, number>;
+  latestMessage: {
+    encouragementId: number;
+    authorName: string;
+    message: string;
+    createdAt: string;
+  } | null;
+  myEncouragement: {
+    id: number;
+    reaction: Reaction | null;
+    message: string | null;
+    visibility: EncouragementVisibility;
+  } | null;
+}
+export interface SocialActivityItem {
+  occurrence: import("@/lib/supabase/database.types").TaskOccurrenceRow;
+  owner: { id: string; displayName: string };
+  summary: EncouragementSummary;
+}
+export interface OwnHistoryItem {
+  occurrence: import("@/lib/supabase/database.types").TaskOccurrenceRow;
+  taskDeleted: boolean;
+  summary: EncouragementSummary;
+}
+export interface OccurrenceDetail {
+  occurrence: import("@/lib/supabase/database.types").TaskOccurrenceRow;
+  owner: { id: string; displayName: string };
+  taskDeleted: boolean;
+  permissions: { canEdit: boolean; canComplete: boolean; canEncourage: boolean };
+  encouragements: import("@/features/encouragements/encouragement-service").EncouragementDisplay[];
+  summary: EncouragementSummary;
+}
+export type InboxFilter = "all" | "encouragement" | "connection";
+export interface InboxItem {
+  id: number;
+  type: Exclude<NotificationType, "task_completed">;
+  actorName: string;
+  createdAt: string;
+  readAt: string | null;
+  occurrenceId: number | null;
+  encouragementId: number | null;
+  connectionRequestId: number | null;
+  target: string | null;
+  availability: "available" | "unavailable";
+  taskTitle: string | null;
+  messagePreview: string | null;
+  reaction: Reaction | null;
+}
