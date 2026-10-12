@@ -52,6 +52,8 @@ function NotificationContent() {
       if (invalidate) {
         setLoading(true);
         setItems([]);
+        setSelected(null);
+        setResolved(false);
       }
       setError("");
       try {
@@ -122,11 +124,13 @@ function NotificationContent() {
       const head = demo
         ? demoListInbox({ filter: "all", limit: 1 })
         : await listInbox({ filter: "all", limit: 1 });
+      if (version !== generation.current) return;
       const throughId = head.items[0]?.id;
       if (throughId) {
         if (demo) demoMarkAllInboxRead(throughId);
         else await markAllInboxRead({ throughId });
-        window.dispatchEvent(new Event("lemon:notifications-changed"));
+        if (version === generation.current)
+          window.dispatchEvent(new Event("lemon:notifications-changed"));
       } else if (version === generation.current) await load();
     } catch (cause) {
       if (version === generation.current)
@@ -303,7 +307,7 @@ function NotificationContent() {
               setSelected(null);
               setResolved(false);
             }}
-            onChanged={() => void load()}
+            onChanged={() => void load(false)}
             onResolved={onResolved}
           />
         </>

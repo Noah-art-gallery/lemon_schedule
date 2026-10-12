@@ -4,15 +4,24 @@ import { NotificationScreen } from "./notification-screen";
 import { listInbox, markAllInboxRead, markNotificationRead } from "./notification-service";
 import type { InboxItem } from "@/types/contracts";
 import { demoGetDetail } from "@/features/tasks/demo-task-store";
-const mocks = vi.hoisted(() => ({ push: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  push: vi.fn(),
+  userId: "user" as string | null,
+  refresh: undefined as undefined | ((invalidate?: boolean) => void),
+}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock("@/features/auth/auth-provider", () => ({
-  useAuth: () => ({ demo: false, user: { id: "user" } }),
+  useAuth: () => ({ demo: false, user: mocks.userId ? { id: mocks.userId } : null }),
 }));
 vi.mock("@/components/layout/app-shell", () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
 }));
-vi.mock("./inbox-events", () => ({ subscribeInbox: () => () => {} }));
+vi.mock("./inbox-events", () => ({
+  subscribeInbox: (_user: unknown, _demo: unknown, refresh: (invalidate?: boolean) => void) => {
+    mocks.refresh = refresh;
+    return () => {};
+  },
+}));
 vi.mock("./notification-service", () => ({
   listInbox: vi.fn(),
   markAllInboxRead: vi.fn(),
@@ -63,6 +72,7 @@ const connection: InboxItem = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.userId = "user";
   vi.mocked(listInbox).mockImplementation(async ({ filter }) => ({
     items: filter === "connection" ? [connection] : [cheer],
     nextCursor: null,
@@ -141,4 +151,75 @@ it("discards late pagination when filters change", async () => {
   );
   expect(screen.queryByText("늦은 응답")).not.toBeInTheDocument();
   expect(screen.queryByText("물 2잔 마시기")).not.toBeInTheDocument();
+});
+
+it.each(["second-account", null])(
+  "does not mark the previous account after switching or signing out (%s)",
+  async (nextAccount) => {
+    let finish!: (result: { items: InboxItem[]; nextCursor: null }) => void;
+    vi.mocked(listInbox).mockImplementation(async ({ limit }) =>
+      limit === 1
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : { items: [cheer], nextCursor: null },
+    );
+    const view = render(<NotificationScreen />);
+    await screen.findByRole("button", { name: /지민의 응원/ });
+    fireEvent.click(screen.getByRole("button", { name: "모두 읽음" }));
+    await waitFor(() => expect(finish).toBeDefined());
+    mocks.userId = nextAccount;
+    view.rerender(<NotificationScreen />);
+    if (nextAccount) await screen.findByRole("button", { name: /지민의 응원/ });
+    await act(async () => finish({ items: [{ ...cheer, id: 99 }], nextCursor: null }));
+    expect(markAllInboxRead).not.toHaveBeenCalled();
+  },
+);
+
+it.each([false, true])(
+  "discards older selected detail on permission invalidation even if refresh fails (%s)",
+  async (fails) => {
+    const older = { ...cheer, id: 7 };
+    vi.mocked(listInbox).mockImplementation(async ({ cursor }) =>
+      cursor ? { items: [older], nextCursor: null } : { items: [connection], nextCursor: 8 },
+    );
+    render(<NotificationScreen />);
+    fireEvent.click(await screen.findByRole("button", { name: "이전 소식 더 보기" }));
+    fireEvent.click(await screen.findByRole("button", { name: /지민의 응원/ }));
+    expect(screen.getByRole("dialog")).toBeVisible();
+    // The author deletes the cheer. The old item would now resolve unavailable,
+    // but page 1 contains only the newer connection notification.
+    vi.mocked(listInbox).mockImplementation(async ({ cursor }) =>
+      cursor
+        ? {
+            items: [
+              {
+                ...older,
+                availability: "unavailable",
+                target: null,
+                taskTitle: null,
+                messagePreview: null,
+                reaction: null,
+              },
+            ],
+            nextCursor: null,
+          }
+        : { items: [connection], nextCursor: 8 },
+    );
+    if (fails) vi.mocked(listInbox).mockRejectedValue(new Error("조회 실패"));
+    await act(async () => mocks.refresh?.(true));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  },
+);
+it("preserves the open detail and row DOM during a read-only refresh", async () => {
+  render(<NotificationScreen />);
+  const row = await screen.findByRole("button", { name: /지민의 응원/ });
+  fireEvent.click(row);
+  vi.mocked(listInbox).mockResolvedValue({
+    items: [{ ...cheer, readAt: "2026-10-12T01:00:00Z" }],
+    nextCursor: null,
+  });
+  await act(async () => mocks.refresh?.(false));
+  expect(screen.getByRole("dialog")).toBeVisible();
+  expect(screen.getByRole("button", { name: /지민의 응원/ })).toBe(row);
 });
