@@ -8,15 +8,24 @@ import {
   sendEncouragement,
 } from "@/features/encouragements/encouragement-service";
 import { demoListSocial } from "@/features/tasks/demo-task-store";
+const reviewAuth = vi.hoisted(() => ({ id: "demo" as string | null }));
+const realtime = vi.hoisted(() => ({
+  listener: null as null | ((kind: "connection" | "request") => void),
+  stop: vi.fn(),
+}));
 vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
 vi.mock("@/components/layout/app-shell", () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => children,
 }));
 vi.mock("@/features/auth/auth-provider", () => ({
-  useAuth: () => ({ demo: false, user: { id: "demo" } }),
+  useAuth: () => ({ demo: false, user: reviewAuth.id ? { id: reviewAuth.id } : null }),
 }));
 vi.mock("./connection-service", () => ({
   getConnectionData: vi.fn(),
+  subscribeConnectionChanges: vi.fn((_id, listener) => {
+    realtime.listener = listener;
+    return realtime.stop;
+  }),
   listSocialActivity: vi.fn(),
   blockFriend: vi.fn(),
   disconnectFriend: vi.fn(),
@@ -38,6 +47,7 @@ vi.mock("@/features/encouragements/encouragement-service", async (original) => (
 vi.mock("@/features/notifications/inbox-read-receipt", () => ({ InboxReadReceipt: () => null }));
 beforeEach(() => {
   vi.clearAllMocks();
+  reviewAuth.id = "demo";
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   vi.mocked(listOccurrenceWindow).mockResolvedValue({ today: "2026-10-12", occurrences: [] });
   vi.mocked(getConnectionData).mockResolvedValue({
@@ -185,4 +195,83 @@ it("expands the future range beyond a year using the owner's today", async () =>
       to: "2027-11-12",
     }),
   );
+});
+
+it("removes a blocked friend's cache even if the subsequent refresh fails", async () => {
+  vi.mocked(blockFriend).mockResolvedValue({ blocked: true });
+  render(<FriendsScreen />);
+  await screen.findByText("수학 문제 5개 풀기");
+  fireEvent.click(screen.getByRole("button", { name: "지민" }));
+  await waitFor(() => expect(screen.getByRole("tab", { name: "기록" })).not.toBeDisabled());
+  fireEvent.click(screen.getByRole("tab", { name: "기록" }));
+  fireEvent.click(screen.getByLabelText("친구 관리"));
+  fireEvent.click(screen.getByRole("button", { name: "차단" }));
+  vi.mocked(getConnectionData).mockRejectedValue(new Error("refresh unavailable"));
+  fireEvent.click(screen.getByRole("button", { name: "차단하기" }));
+  await screen.findByText(/변경은 완료했지만/);
+  expect(blockFriend).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByText("수학 문제 5개 풀기")).not.toBeInTheDocument();
+});
+it("drops prior account friend detail while a new account is loading", async () => {
+  const view = render(<FriendsScreen />);
+  await screen.findByText("수학 문제 5개 풀기");
+  fireEvent.click(screen.getByRole("button", { name: "지민" }));
+  await waitFor(() => expect(screen.getByRole("tab", { name: "기록" })).not.toBeDisabled());
+  fireEvent.click(screen.getByRole("tab", { name: "기록" }));
+  expect(screen.getByText("수학 문제 5개 풀기")).toBeVisible();
+  vi.mocked(getConnectionData).mockImplementation(() => new Promise(() => {}));
+  reviewAuth.id = "second-account";
+  view.rerender(<FriendsScreen />);
+  expect(screen.queryByText("수학 문제 5개 풀기")).not.toBeInTheDocument();
+});
+it("clears cached detail immediately on a realtime relationship change before refetch", async () => {
+  render(<FriendsScreen />);
+  await screen.findByText("수학 문제 5개 풀기");
+  fireEvent.click(screen.getByRole("button", { name: "지민" }));
+  await waitFor(() => expect(screen.getByRole("tab", { name: "기록" })).not.toBeDisabled());
+  fireEvent.click(screen.getByRole("tab", { name: "기록" }));
+  vi.mocked(getConnectionData).mockImplementation(() => new Promise(() => {}));
+  act(() => realtime.listener?.("connection"));
+  expect(screen.queryByText("수학 문제 5개 풀기")).not.toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "지민" })).not.toBeInTheDocument();
+});
+it("drops signed-out data and never sends a late prior-account reaction", async () => {
+  let resolve!: (value: Awaited<ReturnType<typeof listEncouragementSummaries>>) => void;
+  vi.mocked(listEncouragementSummaries).mockImplementationOnce(
+    () =>
+      new Promise((yes) => {
+        resolve = yes;
+      }),
+  );
+  const view = render(<FriendsScreen />);
+  fireEvent.click(await screen.findByRole("button", { name: "박수" }));
+  reviewAuth.id = null;
+  view.rerender(<FriendsScreen />);
+  expect(screen.queryByText("수학 문제 5개 풀기")).not.toBeInTheDocument();
+  await act(async () =>
+    resolve({
+      items: [{ occurrenceId: 101, summary: demoListSocial("demo-friend-1")[0].summary }],
+    }),
+  );
+  expect(sendEncouragement).not.toHaveBeenCalled();
+  expect(realtime.stop).toHaveBeenCalled();
+});
+it("ignores an old account's late feed response after the next account loads", async () => {
+  let resolve!: (value: Awaited<ReturnType<typeof listSocialActivity>>) => void;
+  vi.mocked(listSocialActivity).mockImplementationOnce(
+    () =>
+      new Promise((yes) => {
+        resolve = yes;
+      }),
+  );
+  const view = render(<FriendsScreen />);
+  await waitFor(() => expect(listSocialActivity).toHaveBeenCalledTimes(1));
+  vi.mocked(getConnectionData).mockResolvedValue({ friends: [], incoming: [], outgoing: [] });
+  vi.mocked(listSocialActivity).mockResolvedValue({ items: [], nextCursor: null });
+  reviewAuth.id = "second-account";
+  view.rerender(<FriendsScreen />);
+  await screen.findByText("친구를 추가하면 완료 소식을 볼 수 있어요");
+  await act(async () => resolve({ items: demoListSocial("demo-friend-1"), nextCursor: null }));
+  expect(screen.queryByText("수학 문제 5개 풀기")).not.toBeInTheDocument();
 });

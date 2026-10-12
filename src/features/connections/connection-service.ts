@@ -172,3 +172,25 @@ export async function listSocialActivity(
     data,
   );
 }
+
+/** Tables are already published by the MVP migration; DELETE payloads may contain only the key. */
+export function subscribeConnectionChanges(
+  userId: string,
+  onChange: (kind: "connection" | "request") => void,
+): () => void {
+  const client = getSupabaseClient();
+  let active = true;
+  const channel = client
+    .channel(`friend-connections-${userId}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "connections" }, () => {
+      if (active) onChange("connection");
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "connection_requests" }, () => {
+      if (active) onChange("request");
+    })
+    .subscribe();
+  return () => {
+    active = false;
+    void client.removeChannel(channel);
+  };
+}

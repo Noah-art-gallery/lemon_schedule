@@ -39,6 +39,7 @@ import {
   cancelConnectionRequest,
   disconnectFriend,
   getConnectionData,
+  subscribeConnectionChanges,
   listSocialActivity,
   respondToConnectionRequest,
   sendConnectionRequest,
@@ -70,7 +71,16 @@ const positiveId = (value: string | null) =>
 
 export function FriendsScreen() {
   const { user, demo } = useAuth();
-  const userId = user?.id;
+  return (
+    <FriendsContent
+      key={demo ? "demo" : (user?.id ?? "signed-out")}
+      demo={demo}
+      userId={user?.id}
+    />
+  );
+}
+
+function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
   const params = useSearchParams();
   const query = params.toString();
   const notificationId = positiveId(params.get("notification"));
@@ -129,6 +139,7 @@ export function FriendsScreen() {
   }, []);
 
   const refreshConnections = useCallback(async () => {
+    if (!mounted.current) return emptyConnections;
     const token = ++connectionGeneration.current;
     const next = demo
       ? demoGetConnections()
@@ -141,6 +152,10 @@ export function FriendsScreen() {
 
   const loadActivity = useCallback(
     async (more?: CompletionCursor) => {
+      if (!mounted.current || (!demo && !userId)) {
+        setLoading(false);
+        return;
+      }
       const token = ++generation.current;
       if (!more) setLoading(true);
       setError("");
@@ -177,7 +192,7 @@ export function FriendsScreen() {
         if (token === generation.current) setLoading(false);
       }
     },
-    [demo, refreshConnections],
+    [demo, userId, refreshConnections],
   );
 
   useEffect(() => {
@@ -195,7 +210,25 @@ export function FriendsScreen() {
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", visible);
     const timer = window.setInterval(refresh, 15000);
-    const unsubscribe = demo ? subscribeDemoTasks(refresh) : () => {};
+    const unsubscribe = demo
+      ? subscribeDemoTasks(refresh)
+      : userId
+        ? subscribeConnectionChanges(userId, (kind) => {
+            if (!mounted.current) return;
+            if (kind === "connection") {
+              generation.current++;
+              connectionGeneration.current++;
+              friendGeneration.current++;
+              cache.current.clear();
+              activityCount.current = 0;
+              setActivity([]);
+              setCursor(null);
+              applyConnections(emptyConnections);
+              setNotice("친구 연결이 변경되어 다시 확인하고 있어요");
+              void loadActivity();
+            } else refresh();
+          })
+        : () => {};
     return () => {
       mounted.current = false;
       activityGeneration.current++;
@@ -207,7 +240,7 @@ export function FriendsScreen() {
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", visible);
     };
-  }, [demo, loadActivity, refreshConnections]);
+  }, [demo, userId, applyConnections, loadActivity, refreshConnections]);
 
   async function summaries(rows: TaskOccurrenceRow[]) {
     if (demo) return Object.fromEntries(rows.map((row) => [row.id, demoSummary(row.id)]));
@@ -422,7 +455,12 @@ export function FriendsScreen() {
       setPending(null);
     }
   }
-  async function run(key: string, action: () => Promise<unknown> | void, success: string) {
+  async function run(
+    key: string,
+    action: () => Promise<unknown> | void,
+    success: string,
+    onSuccess?: () => void,
+  ) {
     if (mutation.current) return false;
     mutation.current = true;
     setPending(key);
@@ -430,11 +468,18 @@ export function FriendsScreen() {
     setNotice("");
     try {
       await action();
-      await refreshConnections();
+      if (!mounted.current) return false;
+      onSuccess?.();
       setNotice(success);
-      return true;
+      try {
+        await refreshConnections();
+      } catch (cause) {
+        if (mounted.current)
+          setActionError(`변경은 완료했지만 목록을 새로 불러오지 못했어요: ${message(cause)}`);
+      }
+      return mounted.current;
     } catch (cause) {
-      setActionError(message(cause));
+      if (mounted.current) setActionError(message(cause));
       return false;
     } finally {
       mutation.current = false;
@@ -445,7 +490,7 @@ export function FriendsScreen() {
     if (!selected || !confirm) return;
     const id = selected;
     const mode = confirm;
-    const success = await run(
+    await run(
       "destroy",
       () =>
         demo
@@ -454,14 +499,22 @@ export function FriendsScreen() {
             ? blockFriend(id)
             : disconnectFriend(id),
       mode === "block" ? "차단했어요" : "연결을 해제했어요",
+      () => {
+        connectionGeneration.current++;
+        generation.current++;
+        const current = currentConnections.current;
+        applyConnections({
+          ...current,
+          friends: current.friends.filter((friend) => friend.id !== id),
+          incoming: current.incoming.filter((request) => request.requester_id !== id),
+          outgoing: current.outgoing.filter((request) => request.addressee_id !== id),
+        });
+        cache.current.delete(id);
+        setConfirm(null);
+        setDetail(null);
+        detailOwner.current = null;
+      },
     );
-    if (success) {
-      cache.current.delete(id);
-      setConfirm(null);
-      setDetail(null);
-      detailOwner.current = null;
-      void loadActivity();
-    }
   }
   async function quickReaction(item: SocialActivityItem) {
     const id = item.occurrence.id;
@@ -473,6 +526,7 @@ export function FriendsScreen() {
           : (await listEncouragementSummaries({ occurrenceIds: [id] })).items.find(
               (row) => row.occurrenceId === id,
             )?.summary;
+        if (!mounted.current) return;
         if (!fresh) throw new AppError("FORBIDDEN", "지금은 이 할 일에 응원할 수 없어요");
         if (demo) demoSendEncouragement(id, "clap", fresh.myEncouragement?.message ?? "");
         else await sendEncouragement(id, "clap", fresh.myEncouragement?.message ?? "");
