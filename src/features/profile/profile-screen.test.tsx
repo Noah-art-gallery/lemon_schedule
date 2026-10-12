@@ -86,3 +86,12 @@ it("로그아웃 정리 실패 때 화면을 유지하고 중복 기기 해제�
   expect(mocks.unregisterPushToken).not.toHaveBeenCalled();
   expect(mocks.replace).not.toHaveBeenCalled();
 });
+it("마지막 차단 해제 후에도 패널 안에 초점을 유지한다", async () => {
+  mocks.unblockUser.mockResolvedValue(undefined);
+  render(<ProfileScreen />);
+  await screen.findByText("지민");
+  fireEvent.click(screen.getByRole("button", { name: /차단한 사용자/ }));
+  fireEvent.click(screen.getByRole("button", { name: "민수 차단 해제" }));
+  await screen.findByText("차단한 사용자가 없어요");
+  expect(screen.getByText("차단을 해제해도 친구로 다시 연결되지 않아요")).toHaveFocus();
+});

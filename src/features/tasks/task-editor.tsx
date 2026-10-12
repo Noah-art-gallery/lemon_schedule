@@ -89,7 +89,7 @@ export function TaskEditor({
       </label>
       <div className={styles.formGrid}>
         <label className={styles.label}>
-          시간 <span className={styles.status}>선택</span>
+          시간 (선택)
           <input
             disabled={saving}
             type="time"

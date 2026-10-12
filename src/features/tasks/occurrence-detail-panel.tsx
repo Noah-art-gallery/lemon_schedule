@@ -66,6 +66,8 @@ export function OccurrenceDetailPanel({
   const [effectiveId, setEffectiveId] = useState(occurrenceId);
   const [composerVersion, setComposerVersion] = useState(0);
   const [feedback, setFeedback] = useState("");
+  const detailHeading = useRef<HTMLHeadingElement>(null);
+  const restoreDetailFocus = useRef(false);
   const dirty = useRef(false);
   const discardAction = useRef<(() => void) | null>(null);
   const lock = useRef(false);
@@ -136,6 +138,16 @@ export function OccurrenceDetailPanel({
     const timer = setTimeout(() => setFeedback(""), 2800);
     return () => clearTimeout(timer);
   }, [feedback]);
+  useEffect(() => {
+    if (!loading && !saving && !editor && detail && restoreDetailFocus.current) {
+      restoreDetailFocus.current = false;
+      detailHeading.current?.focus();
+    }
+  }, [loading, saving, editor, detail]);
+  function finishEditing() {
+    restoreDetailFocus.current = true;
+    setEditor(null);
+  }
   function beforeClose() {
     if (lock.current) return false;
     if (dirty.current) {
@@ -162,6 +174,7 @@ export function OccurrenceDetailPanel({
       await action();
       if (activeId.current === id) {
         callbacks.current.onChanged?.();
+        restoreDetailFocus.current = true;
         await load(id);
       }
     } catch (cause) {
@@ -363,9 +376,9 @@ export function OccurrenceDetailPanel({
           }}
           onCancel={() => {
             if (dirty.current) {
-              discardAction.current = () => setEditor(null);
+              discardAction.current = finishEditing;
               setDiscard(true);
-            } else setEditor(null);
+            } else finishEditing();
           }}
           onSave={async (values) => {
             if (demo) demoUpdateTask(detail.occurrence.task_id, values);
@@ -376,7 +389,7 @@ export function OccurrenceDetailPanel({
                 dueTime: values.dueTime || null,
               });
             dirty.current = false;
-            setEditor(null);
+            finishEditing();
             callbacks.current.onChanged?.();
             if (effectiveId !== null) await load(effectiveId);
           }}
@@ -405,7 +418,9 @@ export function OccurrenceDetailPanel({
                 </details>
               ) : null}
             </div>
-            <h3 className={styles.detailTitle}>{detail.occurrence.title_snapshot}</h3>
+            <h3 ref={detailHeading} tabIndex={-1} className={styles.detailTitle}>
+              {detail.occurrence.title_snapshot}
+            </h3>
             <div className={styles.detailMeta}>
               <span>{detail.occurrence.occurrence_date}</span>
               {detail.occurrence.due_time ? (

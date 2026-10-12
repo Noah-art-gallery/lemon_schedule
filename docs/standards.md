@@ -2,8 +2,10 @@
 
 기능 코드는 `src/features/<기능>` 안에 두고 라우트는 화면 진입점만 조합한다. 데이터베이스 호출은 기능 서비스에 모으고 화면에서 Supabase 쿼리를 직접 만들지 않는다. 공통 UI는 `src/components`에 두며 기능 전용 스타일은 전역 토큰과 기존 모바일 중단점을 따른다.
 
-서비스 입력은 Zod로 검증하고 실패는 `AppError`의 `UNAUTHENTICATED`, `FORBIDDEN`, `NOT_FOUND`, `INVALID_INPUT`, `CONFLICT`, `RATE_LIMITED` 중 하나로 변환한다. 성공 출력은 `docs/contracts.md`의 키와 의미를 바꾸지 않는다.
+서비스 입력은 Zod로 검증하고 실패는 `AppError`의 `UNAUTHENTICATED`, `FORBIDDEN`, `NOT_FOUND`, `INVALID_INPUT`, `CONFLICT`, `RATE_LIMITED` 중 하나로 변환한다. 성공 출력의 키와 의미를 바꾸면 해당 서비스 소비자와 계약 검사를 함께 갱신한다.
 
 SQL은 순서형 migration으로만 변경한다. 직접 테이블 쓰기가 원자적 상태 변화를 우회하지 않도록 보안 RPC와 RLS grant를 확인하고, migration 순서에 의존하는 함수는 실제 빈 데이터베이스 적용 순서로 검토한다.
 
-변경 전후 `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test -- --run`, `npm run test:db-contract`를 실행한다. 화면 흐름이 바뀌면 외부 서버를 이용한 Playwright 스모크 테스트를 추가하고, 정적 빌드 이후에만 Capacitor 동기화를 시도한다.
+변경 후 `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm run typecheck:edge`, `npm test -- --run`, `npm run test:db-contract`, `npm run build`를 통과시킨다. 화면은 별도 데모 서버에서 실제 조작과 캡처로 확인한다. 기존 자동 브라우저 검사 정의도 현재 화면 계약과 맞추되 실행하지 않은 검사를 통과로 기록하지 않는다. Capacitor 동기화는 정적 빌드 성공 이후에만 수행한다.
+
+모바일 360·390·430px과 데스크톱에서 80자 제목·긴 닉네임·글자 확대·가로 넘침을 확인한다. 버튼은 44px 이상 터치 영역, 입력은 16px 이상 글자를 유지한다. 패널은 Escape·뒤로가기·초점 복귀를 확인하고 파괴적 확인창은 취소에 첫 초점을 둔다. 로딩·빈 상태·실패·접근 불가는 구분하며, 전송 중 중복 실행과 실패 후 입력 보존을 검사한다. 빌드·데모 조작·실제 DB·계정·휴대폰 검증은 구분해 기록한다.

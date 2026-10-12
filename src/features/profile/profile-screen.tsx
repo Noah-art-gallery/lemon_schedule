@@ -23,29 +23,28 @@ import {
   updateProfile,
   type ProfileDetails,
 } from "./profile-service";
+import {
+  demoGetProfile,
+  demoUpdateProfile,
+  demoUnblockUser,
+  subscribeDemoTasks,
+} from "@/features/tasks/demo-task-store";
 import styles from "./profile-screen.module.css";
 
-const demoProfile: ProfileDetails = {
-  displayName: "지민",
-  timeZone: "Asia/Seoul",
-  inviteCode: "LEMON0001",
-  lemonPoints: 3,
-  petLevel: 1,
-  blocked: [],
-};
 const errorText = (cause: unknown, fallback: string) =>
   cause instanceof Error ? cause.message : fallback;
 
 export function ProfileScreen() {
   const router = useRouter();
   const { user, demo } = useAuth();
-  const [profile, setProfile] = useState<ProfileDetails | null>(demo ? demoProfile : null);
+  const [profile, setProfile] = useState<ProfileDetails | null>(demo ? demoGetProfile() : null);
   const [loadError, setLoadError] = useState("");
   const [panel, setPanel] = useState<"profile" | "blocked" | null>(null);
   const [draft, setDraft] = useState({ displayName: "", timeZone: "" });
   const [discard, setDiscard] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const blockedNote = useRef<HTMLParagraphElement>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [pushState, setPushState] = useState<DevicePushStatus | "loading" | "error">("loading");
@@ -63,6 +62,10 @@ export function ProfileScreen() {
     }
   }, [demo, user]);
 
+  useEffect(() => {
+    if (!demo) return;
+    return subscribeDemoTasks(() => setProfile(demoGetProfile()));
+  }, [demo]);
   useEffect(() => {
     if (demo || !user) return;
     let active = true;
@@ -138,7 +141,7 @@ export function ProfileScreen() {
     setBusy(true);
     setError("");
     try {
-      const next = demo ? draft : await updateProfile(draft);
+      const next = demo ? demoUpdateProfile(draft) : await updateProfile(draft);
       setProfile((current) =>
         current ? { ...current, displayName: next.displayName, timeZone: next.timeZone } : current,
       );
@@ -203,12 +206,14 @@ export function ProfileScreen() {
     setBusy(true);
     setError("");
     try {
-      if (!demo) await unblockUser(id);
+      if (demo) demoUnblockUser(id);
+      else await unblockUser(id);
       setProfile((current) =>
         current
           ? { ...current, blocked: current.blocked.filter((item) => item.id !== id) }
           : current,
       );
+      blockedNote.current?.focus();
       setMessage("차단을 해제했어요");
     } catch (cause) {
       setError(errorText(cause, "차단을 해제하지 못했어요"));
@@ -408,7 +413,9 @@ export function ProfileScreen() {
         ) : null}
         {panel === "blocked" ? (
           <>
-            <p className={styles.note}>차단을 해제해도 친구로 다시 연결되지 않아요</p>
+            <p ref={blockedNote} tabIndex={-1} className={styles.note}>
+              차단을 해제해도 친구로 다시 연결되지 않아요
+            </p>
             {profile?.blocked.length ? (
               <ul className={styles.blocked}>
                 {profile.blocked.map((item) => (
