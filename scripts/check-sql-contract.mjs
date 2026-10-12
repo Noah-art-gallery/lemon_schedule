@@ -23,6 +23,7 @@ const protectedTables = [
   "task_occurrences",
   "completion_events",
   "encouragements",
+  "daily_encouragements",
   "notifications",
   "pets",
   "pet_unlocks",
@@ -45,6 +46,10 @@ for (const table of protectedTables) {
 }
 
 for (const rpc of [
+  "get_daily_encouragement",
+  "get_encouragement_day",
+  "upsert_daily_encouragement",
+  "delete_daily_encouragement",
   "request_connection",
   "respond_connection_request",
   "complete_occurrence",

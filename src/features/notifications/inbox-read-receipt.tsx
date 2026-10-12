@@ -6,7 +6,7 @@ import { AppError } from "@/lib/errors";
 import { listInbox, markNotificationRead } from "./notification-service";
 import { demoListInbox, demoMarkInboxRead } from "./demo-inbox-store";
 export interface InboxResolvedTarget {
-  kind: "request" | "friend" | "occurrence";
+  kind: "request" | "friend" | "occurrence" | "dailyEncouragement";
   id: string;
   encouragementId?: number | null;
 }
@@ -25,7 +25,13 @@ export async function markResolvedInboxRead(
     if (item) {
       const url = item.target ? new URL(item.target, "https://local.invalid") : null;
       const key =
-        target.kind === "request" ? "request" : target.kind === "friend" ? "friend" : "occurrence";
+        target.kind === "request"
+          ? "request"
+          : target.kind === "friend"
+            ? "friend"
+            : target.kind === "dailyEncouragement"
+              ? "dailyEncouragement"
+              : "occurrence";
       if (
         item.availability !== "available" ||
         url?.searchParams.get(key) !== target.id ||

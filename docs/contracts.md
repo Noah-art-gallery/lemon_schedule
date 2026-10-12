@@ -10,7 +10,9 @@
 
 `getOccurrenceDetail({ occurrenceId })`는 발생 건·소유자·삭제 여부·행동 권한·응원 목록·요약을 반환한다. `listOwnHistory`와 `listSocialActivity`는 최초 완료 시각과 발생 건 ID의 복합 커서로 추가 조회한다. 응원 요약은 최대 100개 발생 건씩 조회한다. 소유자 기록에는 삭제·재개한 발생 건이 남고 친구 조회는 현재 연결과 완료 상태를 적용한다. 접근 불가 오류는 과거 상세 캐시로 대체하지 않는다.
 
-응원 쓰기는 완료 발생 건 ID·선택 반응·120자 이하 글을 받으며 하나 이상의 내용이 필요하다. `sendEncouragement(occurrenceId, reaction, message?)`는 응원 ID를 반환한다. 동일 작성자·발생 건 쓰기는 기존 응원을 수정하며 새 소식을 반복 생성하지 않는다. `deleteEncouragement(encouragementId)`는 작성자만 호출하며 `{ encouragementId, visibility: "deleted_by_author" }`를 반환한다. 잘못된 내용은 `INVALID_INPUT`, 현재 연결·완료 조건을 만족하지 못한 전송은 `FORBIDDEN`, 삭제 대상이 없으면 `NOT_FOUND`다.
+`getEncouragementDay(ownerId)`는 `{ day, owner, occurrences, mine }`을 반환한다. `day`는 수신자 시간대의 오늘이며 `mine`은 그날 직접 보낸 하루 응원 또는 null이다. `saveDailyEncouragement({ ownerId, day, reaction, message, quotedOccurrenceId })`는 `upsert_daily_encouragement` RPC로 `{ id, ownerId, authorId, day, reaction, message, authorName, authorAvatarKey, quote: { id, title } | null, createdAt }`을 반환한다. 스티커는 필수, 글은 trim 후 120자 이하, 인용은 같은 수신자의 오늘 활성 발생 건만 허용한다. 지난 날짜 입력은 `CONFLICT`, 잘못된 인용은 `INVALID_INPUT`, 비연결·자기 응원은 `FORBIDDEN`이다.
+
+`getDailyEncouragement(id)`는 당사자 권한과 가시성을 검증해 같은 응원 형식을 반환한다. `deleteDailyEncouragement(id)`는 작성자만 취소하며 RPC의 true를 확인한다. 수정·취소·재전송은 하나의 응원 ID와 알림을 유지한다. 기존 `upsert_encouragement`는 `ENCOURAGEMENT_NOT_ALLOWED`로 거부한다. 기존 `getOccurrenceDetail`의 `canEncourage`는 false이며 과거 읽기·작성자 삭제 계약은 유지한다.
 
 차단·해제·차단 목록·소유자 숨김 서비스와 `block_user`, `unblock_user`, `list_blocked_profiles`, `hide_encouragement` RPC는 폐기했다. 응원 가시성 값은 아래 두 상태로 제한한다. 유지되는 읽기 계약에는 프로필 이모지 필드를 추가하며 기존 커서·권한·대상 ID의 의미는 바꾸지 않는다.
 
@@ -18,7 +20,7 @@
 
 펫 저장은 PNG Blob을 새 사용자 UUID/파일 UUID 경로에 올리고 경로·갱신 시각을 반환한다. 꾸미기는 선택 색상·스티커·배경을 받아 같은 형태로 반환하며 미해금 값은 `FORBIDDEN`이다. 기기 등록은 token·platform·deviceId를 받아 계정과 기기를 연결한다. 휴대폰 알림 켜짐은 OS 권한과 해당 계정 서버 등록이 함께 확인된 상태다. 웹은 unsupported이며 로그아웃은 해당 기기 서버 행과 OS 등록을 해제한다.
 
-`POST /functions/v1/send-completion-push`는 `x-lemon-webhook-secret` 헤더와 `{ type: "INSERT", table: "notifications", record: { id: number } }`를 받는다. 인증 헤더 오류는 401, 형식 오류는 400이며 DB 조회 전에 거부한다. 직접 소식은 현재 연결·완료 상태·응원 가시성·요청 상태를 다시 확인해 `{ sent, failed, skipped }` 또는 `{ skipped: reason }`을 반환한다. 완료 이벤트는 건너뛴다. 내부 조회 실패는 500 `DISPATCH_FAILED`이며 공급자 실패는 기기별 장부에 남긴다. 함수 이름과 INSERT 웹훅 주소는 기존 배포 호환성을 유지한다.
+`POST /functions/v1/send-completion-push`는 `x-lemon-webhook-secret` 헤더와 `{ type: "INSERT", table: "notifications", record: { id: number } }`를 받는다. 인증 헤더 오류는 401, 형식 오류는 400이며 DB 조회 전에 거부한다. 직접 소식은 현재 연결·응원 가시성·요청 상태를 다시 확인하며 기존 발생 건 응원에만 완료 상태를 요구해 `{ sent, failed, skipped }` 또는 `{ skipped: reason }`을 반환한다. 완료 이벤트는 건너뛴다. 내부 조회 실패는 500 `DISPATCH_FAILED`이며 공급자 실패는 기기별 장부에 남긴다. 함수 이름과 INSERT 웹훅 주소는 기존 배포 호환성을 유지한다.
 
 ## 활동·상세·소식 조회 형식
 
@@ -43,8 +45,10 @@
 
 요약 `summary`는 `{ count, reactions: { lemon, clap, heart, cheer }, latestMessage, myEncouragement }`다. 수치는 현재 일반 표시가 허용되는 행만 센다. `latestMessage`는 `{ encouragementId, authorName, authorAvatarKey, message, createdAt } | null`, `myEncouragement`는 `{ id, reaction, message, visibility } | null`이며 자기 글만 포함한다. 작성자가 삭제한 응원은 일반 목록·요약·미리보기에 노출하지 않는다.
 
-`InboxItem`은 `{ id, type, actorName, actorAvatarKey, createdAt, readAt, occurrenceId, encouragementId, connectionRequestId, target, availability, taskTitle, messagePreview, reaction }`이다. `type`은 직접 소식 세 종류이며 `readAt`과 대상 ID는 `null`일 수 있다. `availability`는 `available | unavailable`이다. `unavailable`에서는 `target`, `taskTitle`, `messagePreview`, `reaction`이 모두 `null`이다. 삭제된 글과 현재 접근 권한이 없는 대상은 과거 원문을 미리보기로 반환하지 않는다.
+`InboxItem`은 `{ id, type, actorName, actorAvatarKey, createdAt, readAt, occurrenceId, encouragementId, dailyEncouragementId, connectionRequestId, target, availability, taskTitle, messagePreview, reaction }`이다. `type`은 직접 소식 세 종류이며 `readAt`과 대상 ID는 `null`일 수 있다. `availability`는 `available | unavailable`이다. `unavailable`에서는 `target`, `taskTitle`, `messagePreview`, `reaction`이 모두 `null`이다. 삭제된 글과 현재 접근 권한이 없는 대상은 과거 원문을 미리보기로 반환하지 않는다.
 
 공개 프로필 이모지는 `avatarKey`, 응원 작성자는 `authorAvatarKey`, 소식 작성자는 `actorAvatarKey`로 반환한다. 각 필드는 `ProfileAvatarKey`이며 해당 작성자의 이름을 공개할 수 없는 관계에서는 `lemon`이다. 클라이언트 읽기 스키마는 누락 키를 `lemon`으로 해석하고 알려지지 않은 키는 `INVALID_INPUT`으로 거부한다.
 
-응원 링크는 `/?occurrence=<id>&encouragement=<id>`, 요청은 `/friends/?request=<id>`, 수락은 `/friends/?friend=<UUID>`다. 기존 `/?occurrence=<id>`와 `/friends/?friend=<UUID>&occurrence=<id>`도 지원한다. 웹훅의 완료 이벤트 응답은 HTTP 200 `{ skipped: "DIRECT_NOTIFICATION_ONLY" }`다.
+하루 응원 링크는 `/?dailyEncouragement=<id>`, 기존 응원은 `/?occurrence=<id>&encouragement=<id>`, 요청은 `/friends/?request=<id>`, 수락은 `/friends/?friend=<UUID>`다. 기존 `/?occurrence=<id>`와 `/friends/?friend=<UUID>&occurrence=<id>`도 지원한다. 웹훅의 완료 이벤트 응답은 HTTP 200 `{ skipped: "DIRECT_NOTIFICATION_ONLY" }`다.
+
+휴대폰 탭 대상에는 `notification=<id>`도 포함하며 실제 대상 조회 성공 후에만 읽음 처리한다.

@@ -100,6 +100,7 @@ export interface OccurrenceDetail {
 }
 export type InboxFilter = "all" | "encouragement" | "connection";
 export interface InboxItem {
+  dailyEncouragementId?: number | null;
   id: number;
   type: Exclude<NotificationType, "task_completed">;
   actorName: string;

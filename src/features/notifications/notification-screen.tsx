@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { StatePanel } from "@/components/ui/state-panel";
 import { useAuth } from "@/features/auth/auth-provider";
 import { OccurrenceDetailPanel } from "@/features/tasks/occurrence-detail-panel";
+import { DailyEncouragementPanel } from "@/features/encouragements/daily-encouragement-panel";
 import { ReactionImage } from "@/features/encouragements/reaction-image";
 import type { InboxFilter, InboxItem, OccurrenceDetail } from "@/types/contracts";
 import { listInbox, markAllInboxRead } from "./notification-service";
@@ -110,7 +111,8 @@ function NotificationContent() {
             !fresh ||
             fresh.availability !== "available" ||
             fresh.occurrenceId !== target.occurrenceId ||
-            fresh.encouragementId !== target.encouragementId
+            fresh.encouragementId !== target.encouragementId ||
+            fresh.dailyEncouragementId !== target.dailyEncouragementId
           )
             clearTarget();
         }
@@ -202,7 +204,10 @@ function NotificationContent() {
       setNotice("지금은 이 소식을 확인할 수 없어요");
       return;
     }
-    if (item.type === "encouragement_received" && item.occurrenceId) {
+    if (
+      item.type === "encouragement_received" &&
+      (item.occurrenceId || item.dailyEncouragementId)
+    ) {
       setResolved(false);
       setSelected(item);
     } else {
@@ -340,7 +345,18 @@ function NotificationContent() {
           ) : null}
         </section>
       )}
-      {selected ? (
+      {selected?.dailyEncouragementId ? (
+        <DailyEncouragementPanel
+          key={selected.dailyEncouragementId}
+          id={selected.dailyEncouragementId}
+          notificationId={selected.readAt ? null : selected.id}
+          onClose={() => {
+            returnFocusId.current = selected.id;
+            setSelected(null);
+            setResolved(false);
+          }}
+        />
+      ) : selected ? (
         <>
           <OccurrenceDetailPanel
             notice={

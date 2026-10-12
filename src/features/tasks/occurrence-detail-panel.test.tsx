@@ -104,7 +104,7 @@ it.each([null, "19:30"])(
   },
 );
 
-it("requires confirmation before deleting a sent encouragement with an unsent draft", async () => {
+it("keeps legacy encouragement read only and requires confirmation before deletion", async () => {
   const detail = demoGetDetail(101);
   const own = {
     ...detail.encouragements[0],
@@ -122,14 +122,14 @@ it("requires confirmation before deleting a sent encouragement with an unsent dr
   };
   vi.mocked(getOccurrenceDetail).mockResolvedValue(detail);
   render(<OccurrenceDetailPanel occurrenceId={101} onClose={() => {}} />);
-  fireEvent.click(await screen.findByRole("button", { name: "응원 수정" }));
-  const input = await screen.findByLabelText("응원글");
-  fireEvent.change(input, { target: { value: "지우면 안 되는 작성 중 글" } });
-  fireEvent.click(screen.getByRole("button", { name: "응원 삭제" }));
+  await screen.findByText("보낸 응원");
+  expect(screen.queryByRole("button", { name: "응원 수정" })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("응원글")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "응원 1개 펼치기" }));
+  fireEvent.click(await screen.findByRole("button", { name: "응원 삭제" }));
   expect(deleteEncouragement).not.toHaveBeenCalled();
-  expect(input).toHaveValue("지우면 안 되는 작성 중 글");
   fireEvent.click(screen.getByRole("button", { name: "취소" }));
-  expect(input).toHaveValue("지우면 안 되는 작성 중 글");
+  expect(screen.getByText("보낸 응원")).toBeVisible();
 });
 
 it("keeps received encouragement visible without owner hiding controls", async () => {

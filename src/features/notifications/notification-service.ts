@@ -39,8 +39,12 @@ export function splitNotificationPage(rows: NotificationRow[]): {
 
 export function notificationTarget(
   item: Pick<NotificationRow, "notification_type" | "actor_id" | "occurrence_id"> &
-    Partial<Pick<NotificationRow, "encouragement_id" | "connection_request_id">>,
+    Partial<
+      Pick<NotificationRow, "encouragement_id" | "connection_request_id" | "daily_encouragement_id">
+    >,
 ): string {
+  if (item.notification_type === "encouragement_received" && item.daily_encouragement_id)
+    return `/?dailyEncouragement=${item.daily_encouragement_id}`;
   if (item.notification_type === "task_completed" && item.actor_id && item.occurrence_id) {
     return `/friends/?friend=${encodeURIComponent(item.actor_id)}&occurrence=${item.occurrence_id}`;
   }
@@ -161,6 +165,7 @@ export async function listInbox(input: {
           readAt: z.string().nullable(),
           occurrenceId: positiveId.nullable(),
           encouragementId: positiveId.nullable(),
+          dailyEncouragementId: positiveId.nullable().optional(),
           connectionRequestId: positiveId.nullable(),
           target: z.string().nullable(),
           availability: z.enum(["available", "unavailable"]),

@@ -283,7 +283,40 @@ it.each([
   expect(JSON.parse(String(sendCall![1]?.body)).message).toEqual({
     token: "test-token",
     notification: { title: "레몬스케줄", body },
-    data: { target },
+    data: { target: target + "&notification=1" },
   });
   expect(writes[1]).toMatchObject({ status: "sent", provider_message_id: "message-id" });
 });
+
+it("accepts a daily encouragement without requiring a completed task", async () => {
+  rows.notifications[0] = {
+    ...rows.notifications[0],
+    daily_encouragement_id: 10,
+    occurrence_id: null,
+    encouragement_id: null,
+  };
+  rows.daily_encouragements = [
+    { id: 10, owner_id: "owner", author_id: "friend", visibility: "visible" },
+  ];
+  const response = await request();
+  expect(response.status).toBe(200);
+  expect(from).toHaveBeenCalledWith("device_tokens");
+  expect(from).not.toHaveBeenCalledWith("task_occurrences");
+});
+it.each(["deleted_by_author", "missing"])(
+  "does not fetch devices for unavailable daily content (%s)",
+  async (visibility) => {
+    rows.notifications[0] = {
+      ...rows.notifications[0],
+      daily_encouragement_id: 10,
+      occurrence_id: null,
+      encouragement_id: null,
+    };
+    rows.daily_encouragements =
+      visibility === "missing"
+        ? []
+        : [{ id: 10, owner_id: "owner", author_id: "friend", visibility }];
+    expect(await (await request()).json()).toEqual({ skipped: "ENCOURAGEMENT_UNAVAILABLE" });
+    expect(from).not.toHaveBeenCalledWith("device_tokens");
+  },
+);

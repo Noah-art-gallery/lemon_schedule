@@ -502,7 +502,7 @@ it("shows received reactions as images beside the message instead of author-name
   const author = await screen.findByText("서연", { exact: true });
   const item = within(author.closest("article")!);
   const image = item.getByRole("img", { name: "좋아요" });
-  expect(image).toHaveAttribute("src", "/reactions/heart.svg");
+  expect(image).toHaveAttribute("data-sprite", "reaction-heart");
   expect(image).toHaveAttribute("width", "32");
   expect(item.getByText("어려운 문제도 끝까지 풀었네")).toBeVisible();
   expect(screen.queryByText("서연 · 좋아요")).not.toBeInTheDocument();
@@ -515,14 +515,12 @@ it("shows reaction-only previews as images and counts without opening the thread
     reactions: { lemon: 2, clap: 3, heart: 0, cheer: 0 },
   };
   render(<EncouragementThread occurrenceId={101} summary={summary} />);
-  expect(screen.getByRole("img", { name: "레몬 2개" }).querySelector("img")).toHaveAttribute(
-    "src",
-    "/reactions/lemon.svg",
-  );
-  expect(screen.getByRole("img", { name: "박수 3개" }).querySelector("img")).toHaveAttribute(
-    "src",
-    "/reactions/clap.svg",
-  );
+  expect(
+    screen.getByRole("img", { name: "레몬 2개" }).querySelector("[data-sprite]"),
+  ).toHaveAttribute("data-sprite", "reaction-lemon");
+  expect(
+    screen.getByRole("img", { name: "박수 3개" }).querySelector("[data-sprite]"),
+  ).toHaveAttribute("data-sprite", "reaction-clap");
   expect(screen.queryByText(/레몬 2.*박수 3/)).not.toBeInTheDocument();
   expect(getOccurrenceDetail).not.toHaveBeenCalled();
 });

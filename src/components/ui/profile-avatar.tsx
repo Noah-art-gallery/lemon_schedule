@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { CharacterSprite } from "./character-sprite";
 
 export const avatarOptions = [
   { key: "lemon", label: "레몬" },
@@ -19,14 +19,5 @@ export function ProfileAvatar({
   size?: number;
 }) {
   const avatar = avatarOptions.find((option) => option.key === avatarKey) ?? avatarOptions[0];
-  return (
-    <Image
-      src={`/avatars/${avatar.key}.svg`}
-      alt={avatar.label}
-      width={size}
-      height={size}
-      unoptimized
-      style={{ flexShrink: 0 }}
-    />
-  );
+  return <CharacterSprite name={`avatar-${avatar.key}`} alt={avatar.label} size={size} />;
 }

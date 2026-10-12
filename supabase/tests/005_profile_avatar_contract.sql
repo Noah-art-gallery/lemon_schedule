@@ -43,7 +43,12 @@ select public.complete_occurrence(current_setting('test.avatar_occurrence_id')::
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000102', true);
 select extensions.is(public.list_social_activity()->'items'->0->'owner'->>'avatarKey', 'cat', 'friend activity projects the owner avatar');
 select extensions.is(public.get_occurrence_detail(current_setting('test.avatar_occurrence_id')::bigint)->'owner'->>'avatarKey', 'cat', 'occurrence detail projects the owner avatar');
-select public.upsert_encouragement(current_setting('test.avatar_occurrence_id')::bigint, 'clap', 'Good work');
+reset role;
+insert into public.encouragements(occurrence_id, owner_id, author_id, reaction, message)
+values (current_setting('test.avatar_occurrence_id')::bigint, '00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000102', 'clap', 'Good work');
+insert into public.notifications(recipient_id, actor_id, notification_type, occurrence_id, encouragement_id, event_key)
+select owner_id, author_id, 'encouragement_received', occurrence_id, id, 'encouragement:' || id from public.encouragements;
+set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000101', true);
 select extensions.is(public.get_occurrence_detail(current_setting('test.avatar_occurrence_id')::bigint)->'encouragements'->0->>'authorAvatarKey', 'fox', 'detail projects a connected encouragement author avatar');
 select extensions.is(public.list_encouragement_summaries(array[current_setting('test.avatar_occurrence_id')::bigint])->'items'->0->'summary'->'latestMessage'->>'authorAvatarKey', 'fox', 'summary projects the latest connected author avatar');

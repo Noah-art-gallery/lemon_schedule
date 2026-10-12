@@ -1,3 +1,4 @@
+import { demoGetDailyEncouragement } from "@/features/encouragements/demo-daily-encouragement-store";
 import * as tasks from "@/features/tasks/demo-task-store";
 import type { ConnectionData } from "@/features/connections/connection-service";
 import type { InboxFilter, InboxItem } from "@/types/contracts";
@@ -51,7 +52,20 @@ export function demoInboxItems(): InboxItem[] {
   const data = connections();
   const pending = data ? data.incoming.some((item) => item.id === 41) : true;
   const friend = data ? data.friends.some((item) => item.id === "demo-friend-1") : true;
+  const daily = demoGetDailyEncouragement(1);
   return [
+    {
+      ...base,
+      id: 4,
+      type: "encouragement_received",
+      actorName: daily.authorName,
+      actorAvatarKey: daily.authorAvatarKey,
+      dailyEncouragementId: daily.id,
+      availability: "available",
+      target: "/?dailyEncouragement=" + daily.id,
+      messagePreview: daily.message,
+      reaction: daily.reaction,
+    },
     cheer,
     {
       ...base,

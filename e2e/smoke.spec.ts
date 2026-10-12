@@ -72,33 +72,28 @@ test("펫 그리기 패널을 닫으면 진입 버튼으로 돌아간다", async
   await expect(trigger).toBeFocused();
 });
 
-test("카드 안 응원은 접어도 초안이 남고 명시적으로 전송한다", async ({ page }) => {
+test("친구 하루에 응원 하나를 보내고 같은 응원을 수정한다", async ({ page }) => {
   await page.goto("/friends/");
-  const card = page.getByRole("article").filter({
-    has: page.getByRole("button", { name: "수학 문제 5개 풀기", exact: true }),
-  });
-  const preview = card.getByText("서연: 어려운 문제도 끝까지 풀었네", { exact: true });
-  await expect(preview).toBeVisible();
-  await card.getByRole("button", { name: "응원 남기기", exact: true }).click();
-  const composer = card.getByRole("region", { name: "응원 남기기", exact: true });
-  await composer.getByRole("textbox", { name: "응원글" }).fill("끝까지 풀었네!");
+  const card = page.getByRole("article", { name: "지민의 하루" });
+  await card.getByRole("button", { name: "응원 보내기", exact: true }).click();
+  const composer = page.getByRole("form", { name: "지민에게 하루 응원" });
+  const panel = page.getByRole("dialog");
+  await expect(panel.getByRole("button", { name: "응원 보내기" })).toBeDisabled();
   await composer.getByRole("button", { name: "박수", exact: true }).click();
-  await expect(preview).toBeVisible();
-  await card.getByRole("button", { name: /응원 \d+개 접기/ }).click();
-  await expect(composer).not.toBeVisible();
-  await expect(preview).toBeVisible();
-  await card.getByRole("button", { name: /응원 \d+개 펼치기/ }).click();
-  await expect(composer.getByRole("textbox", { name: "응원글" })).toHaveValue("끝까지 풀었네!");
-  await expect(composer.getByRole("button", { name: "박수", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await composer.getByRole("button", { name: "응원 보내기", exact: true }).click();
+  await composer.getByRole("button", { name: /할 일 인용/ }).click();
+  await composer.getByLabel("인용할 할 일").selectOption("101");
+  await composer.getByLabel("응원글").fill("끝까지 풀었네!");
+  await panel.getByRole("button", { name: "응원 보내기" }).click();
+  const sent = card.getByRole("region", { name: "내가 보낸 응원" });
+  await expect(sent).toContainText("보냄");
+  await expect(sent).toContainText("끝까지 풀었네!");
+  await expect(composer).toHaveCount(0);
+  await card.getByRole("button", { name: "수정", exact: true }).click();
+  await expect(composer.getByLabel("응원글")).toHaveValue("끝까지 풀었네!");
   await composer.getByRole("button", { name: "레몬", exact: true }).click();
-  await expect(composer.getByRole("textbox", { name: "응원글" })).toHaveValue("끝까지 풀었네!");
-  await composer.getByRole("button", { name: "응원 수정", exact: true }).click();
-  await expect(card.getByText("나: 끝까지 풀었네!", { exact: true })).toBeVisible();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await panel.getByRole("button", { name: "수정 저장" }).click();
+  await expect(sent).toHaveCount(1);
+  await expect(sent.getByRole("img", { name: "레몬", exact: true })).toBeVisible();
 });
 
 test("친구 삭제 확인은 취소에 초점을 두고 관리 버튼으로 돌아온다", async ({ page }) => {

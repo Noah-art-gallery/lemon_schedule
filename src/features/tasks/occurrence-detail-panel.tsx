@@ -383,7 +383,7 @@ export function OccurrenceDetailPanel({
             occurrenceId={detail.occurrence.id}
             summary={detail.summary}
             initialDetail={detail}
-            canCompose={detail.permissions.canEncourage}
+            canCompose={false}
             targetEncouragementId={encouragementId}
             onDirtyChange={(value) => {
               dirty.current = value;

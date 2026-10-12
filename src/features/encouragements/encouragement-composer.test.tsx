@@ -77,17 +77,17 @@ it("uses four named color image choices without visible reaction-name text", () 
     ["응원", "cheer"],
   ]) {
     const choice = screen.getByRole("button", { name: label });
-    const image = choice.querySelector("img");
+    const image = choice.querySelector("[data-sprite]");
     expect(choice).toHaveAttribute("title", label);
     expect(choice.textContent).toBe("");
-    expect(image).toHaveAttribute("src", `/reactions/${file}.svg`);
+    expect(image).toHaveAttribute("data-sprite", `reaction-${file}`);
     expect(image).toHaveAttribute("width", "32");
     expect(image).toHaveAttribute("height", "32");
-    expect(image).toHaveAttribute("alt", "");
+    expect(image).toHaveAttribute("aria-hidden", "true");
   }
   const clap = screen.getByRole("button", { name: "박수" });
   fireEvent.click(clap);
   expect(clap).toHaveAttribute("aria-pressed", "true");
-  expect(clap.querySelector("svg")).toBeInTheDocument();
+  expect(clap.querySelector(".lucide-check")).toBeInTheDocument();
   expect(send).not.toHaveBeenCalled();
 });

@@ -212,9 +212,9 @@ function ThreadState({
     target?.focus();
   }, [expanded, loading, detail, targetEncouragementId]);
   useEffect(() => {
-    if (expanded && composing && detail?.permissions.canEncourage)
+    if (expanded && canCompose && composing && detail?.permissions.canEncourage)
       root.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus();
-  }, [expanded, composing, detail?.permissions.canEncourage]);
+  }, [expanded, composing, canCompose, detail?.permissions.canEncourage]);
   async function send(reaction: Reaction | null, message: string) {
     if (lock.current)
       throw new AppError("CONFLICT", "다른 응원을 처리 중이에요. 잠시 후 다시 시도해 주세요");
@@ -300,7 +300,7 @@ function ThreadState({
           응원 {currentSummary.count}개
           <ChevronDown size={16} aria-hidden="true" />
         </button>
-        {!forbidden && (detail ? detail.permissions.canEncourage : canCompose) ? (
+        {!forbidden && canCompose && (!detail || detail.permissions.canEncourage) ? (
           <Button variant="ghost" onClick={openComposer}>
             {currentSummary.myEncouragement ? "응원 수정" : "응원 남기기"}
           </Button>
@@ -410,7 +410,7 @@ function ThreadState({
             </div>
           </section>
         ) : null}
-        {composing && detail?.permissions.canEncourage && !forbidden ? (
+        {canCompose && composing && detail?.permissions.canEncourage && !forbidden ? (
           <EncouragementComposer
             key={composerVersion}
             existing={detail.summary.myEncouragement}

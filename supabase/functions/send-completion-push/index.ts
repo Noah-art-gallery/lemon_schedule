@@ -213,7 +213,7 @@ edgeRuntime.Deno.serve(async (request) => {
     const { data: notification, error: notificationError } = await admin
       .from("notifications")
       .select(
-        "id, recipient_id, actor_id, occurrence_id, encouragement_id, connection_request_id, notification_type",
+        "id, recipient_id, actor_id, occurrence_id, encouragement_id, daily_encouragement_id, connection_request_id, notification_type",
       )
       .eq("id", notificationId)
       .maybeSingle();
@@ -270,6 +270,23 @@ edgeRuntime.Deno.serve(async (request) => {
         ? "/friends/?request=" + notification.connection_request_id
         : "/friends/?friend=" + encodeURIComponent(notification.actor_id);
       body = incoming ? "새 친구 요청이 있어요" : "친구 요청이 수락됐어요";
+    } else if (notification.daily_encouragement_id) {
+      const { data: encouragement, error } = await admin
+        .from("daily_encouragements")
+        .select("author_id, owner_id, visibility")
+        .eq("id", notification.daily_encouragement_id)
+        .maybeSingle();
+      if (error) throw new Error("ENCOURAGEMENT_QUERY");
+      if (
+        !encouragement ||
+        encouragement.author_id !== notification.actor_id ||
+        encouragement.owner_id !== notification.recipient_id ||
+        encouragement.visibility !== "visible"
+      ) {
+        return json({ skipped: "ENCOURAGEMENT_UNAVAILABLE" });
+      }
+      target = "/?dailyEncouragement=" + notification.daily_encouragement_id;
+      body = "새 응원이 도착했어요";
     } else {
       if (!notification.encouragement_id || !notification.occurrence_id) {
         return json({ skipped: "ENCOURAGEMENT_UNAVAILABLE" });
@@ -317,6 +334,8 @@ edgeRuntime.Deno.serve(async (request) => {
         notification.encouragement_id;
       body = "새 응원이 도착했어요";
     }
+
+    target += (target.includes("?") ? "&" : "?") + "notification=" + notificationId;
 
     const { data: devices, error: devicesError } = await admin
       .from("device_tokens")

@@ -12,19 +12,23 @@
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 8px;
-  min-height: 52px;
-  padding: 12px 16px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
-  margin-bottom: 20px;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  margin-bottom: 24px;
   text-align: left;
+  font-size: 13px;
+  color: var(--muted);
+}
+.requestEntry strong {
+  color: var(--leaf-600);
 }
 .requestEntry span {
   margin-left: auto;
-  color: var(--muted);
-  font-size: 14px;
+  font-size: 12px;
 }
 .friendSection {
   margin: 0 0 28px;
@@ -57,8 +61,10 @@
   font-weight: 400;
 }
 .sectionTitle {
-  font-size: 18px;
-  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0 0 16px;
 }
 .feed {
   display: grid;

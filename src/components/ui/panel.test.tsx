@@ -27,6 +27,34 @@ function Example() {
 }
 
 describe("Panel", () => {
+  it("releases background and scroll locks when stacked panels close together", () => {
+    const view = (composer: boolean, confirmation: boolean) => (
+      <>
+        <button>배경 버튼</button>
+        <Panel open={composer} history={false} title="응원 작성" onClose={vi.fn()}>
+          <input aria-label="응원" />
+        </Panel>
+        <Panel open={confirmation} history={false} title="닫기 확인" onClose={vi.fn()}>
+          확인
+        </Panel>
+      </>
+    );
+    const { container, rerender } = render(view(true, false));
+    rerender(view(true, true));
+    expect(container.inert).toBe(true);
+    rerender(view(false, true));
+    expect(container.inert).toBe(true);
+    expect(document.body.style.overflow).toBe("hidden");
+    rerender(view(false, false));
+    expect(container.inert).not.toBe(true);
+    expect(document.body.style.overflow).not.toBe("hidden");
+    rerender(view(true, false));
+    rerender(view(true, true));
+    rerender(view(false, false));
+    expect(container.inert).not.toBe(true);
+    expect(document.body.style.overflow).not.toBe("hidden");
+  });
+
   it("moves focus to the requested field, traps Tab, and restores the trigger on Escape", async () => {
     const user = userEvent.setup();
     render(<Example />);

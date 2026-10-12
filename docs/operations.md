@@ -56,4 +56,4 @@ Google Play 배포용 서명·AAB와 iOS 설치는 별도 작업이다. 실기�
 
 데모는 비프로덕션 개발 서버에서만 실행한다. 화면 간 변경은 같은 탭 안에서 유지되며 새로고침하면 초기화된다. 데모 검증은 실제 가입·DB 저장·휴대폰 수신 성공을 의미하지 않는다.
 
-응원 그림은 로컬 `public/reactions/`, 프로필 이모지는 `public/avatars/`의 Twemoji SVG를 사용한다. 배포 시 응원 그림 4개·프로필 그림 8개와 두 디렉터리의 `NOTICE.txt`, `public/reactions/LICENSE-GRAPHICS.txt`를 함께 포함하며 외부 이미지 서버를 런타임 의존성으로 추가하지 않는다. 원본 출처와 CC BY 4.0 고지는 해당 공개 파일에 보존한다.
+프로필·응원·상단 로고·기본 펫은 로컬 `public/sprites/characters-v1.png`와 공통 `CharacterSprite`의 원본 좌표를 사용한다. 배포 시 PNG를 정적 출력에 포함하고 DB의 기존 프로필·반응 키는 유지한다. 셀 구성과 표시 규격은 `public/sprites/README.md`에 기록한다. 기존 Twemoji SVG와 출처·CC BY 4.0 고지는 원래 폴더에 보존한다. 외부 이미지 서버를 런타임 의존성으로 추가하지 않는다.

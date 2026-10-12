@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeading } from "@/components/layout/page-heading";
 import { Button } from "@/components/ui/button";
+import { CharacterSprite } from "@/components/ui/character-sprite";
 import { Panel } from "@/components/ui/panel";
 import { StatePanel } from "@/components/ui/state-panel";
 import { useAuth } from "@/features/auth/auth-provider";
@@ -187,15 +188,24 @@ export function PetScreen() {
                 {pet.decorations.selectedAccessory === "leaf-hat" ? (
                   <Leaf className={styles.accessory} size={36} aria-label="잎사귀 모자" />
                 ) : null}
-                <Image
-                  src={imageUrl || "/images/lemon-pet-default.png"}
-                  alt={imageUrl ? "내 펫" : "기본 레몬 펫"}
-                  width={240}
-                  height={240}
-                  className={styles.image}
-                  unoptimized={!!imageUrl}
-                  priority
-                />
+                {imageUrl ? (
+                  <Image
+                    src={imageUrl}
+                    alt="내 펫"
+                    width={240}
+                    height={240}
+                    className={styles.image}
+                    unoptimized
+                    preload
+                  />
+                ) : (
+                  <CharacterSprite
+                    name="pet-default"
+                    alt="기본 레몬 펫"
+                    size={240}
+                    className={styles.image}
+                  />
+                )}
               </div>
               <Button
                 size="lg"

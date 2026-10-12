@@ -20,6 +20,7 @@ import { AppError } from "@/lib/errors";
 import { OccurrenceDetailPanel } from "@/features/tasks/occurrence-detail-panel";
 import { TaskRowView } from "@/features/tasks/task-row-view";
 import { listEncouragementSummaries } from "@/features/encouragements/encouragement-service";
+import { DailyFriendCard } from "@/features/encouragements/daily-friend-card";
 import { EncouragementThread } from "@/features/encouragements/encouragement-thread";
 import {
   demoGetConnections,
@@ -112,8 +113,8 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [activity, setActivity] = useState<SocialActivityItem[]>([]);
-  const [cursor, setCursor] = useState<CompletionCursor | null>(null);
+  const [, setActivity] = useState<SocialActivityItem[]>([]);
+  const [, setCursor] = useState<CompletionCursor | null>(null);
   const [friendLimit, setFriendLimit] = useState(8);
   const [requestLimit, setRequestLimit] = useState(10);
   const [selected, setSelected] = useState<string | null>(null);
@@ -186,8 +187,8 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
   const [threadVersion, setThreadVersion] = useState(0);
   const [discardOpen, setDiscardOpen] = useState(false);
   const leaveAction = useRef<(() => void) | null>(null);
-  const dirtyThreads = useRef(new Map<number, string>());
-  const busyThreads = useRef(new Map<number, string>());
+  const dirtyThreads = useRef(new Map<number | string, string>());
+  const busyThreads = useRef(new Map<number | string, string>());
   const guardedHistory = useRef(false);
   const originalHistory = useRef<unknown>(null);
   const guardUrl = useRef("");
@@ -320,9 +321,24 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
     };
   }, []);
 
+  function dailyDirty(ownerId: string, dirty: boolean) {
+    const key = `day:${ownerId}`;
+    if (dirty) {
+      dirtyThreads.current.set(key, ownerId);
+      ensureHistoryGuard();
+    } else dirtyThreads.current.delete(key);
+  }
+  function dailyBusy(ownerId: string, busy: boolean) {
+    const key = `day:${ownerId}`;
+    if (busy) {
+      busyThreads.current.set(key, ownerId);
+      ensureHistoryGuard();
+    } else busyThreads.current.delete(key);
+  }
+
   function threadProps(id: number, ownerId: string, canCompose: boolean) {
     return {
-      canCompose,
+      canCompose: false,
       accessKey: `${ownerId}:${canCompose}:${threadVersion}`,
       onDirtyChange: (dirty: boolean) => {
         if (dirty) {
@@ -432,9 +448,9 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
               .map((item) => item.occurrence.id),
           );
           for (const id of dirtyThreads.current.keys())
-            if (!completed.has(id)) dirtyThreads.current.delete(id);
+            if (typeof id === "number" && !completed.has(id)) dirtyThreads.current.delete(id);
           for (const id of busyThreads.current.keys())
-            if (!completed.has(id)) busyThreads.current.delete(id);
+            if (typeof id === "number" && !completed.has(id)) busyThreads.current.delete(id);
         }
         setActivity((old) =>
           more
@@ -594,9 +610,11 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
           .map((row) => row.id),
       );
       for (const [occurrenceId, owner] of dirtyThreads.current)
-        if (owner === id && !completed.has(occurrenceId)) dirtyThreads.current.delete(occurrenceId);
+        if (typeof occurrenceId === "number" && owner === id && !completed.has(occurrenceId))
+          dirtyThreads.current.delete(occurrenceId);
       for (const [occurrenceId, owner] of busyThreads.current)
-        if (owner === id && !completed.has(occurrenceId)) busyThreads.current.delete(occurrenceId);
+        if (typeof occurrenceId === "number" && owner === id && !completed.has(occurrenceId))
+          busyThreads.current.delete(occurrenceId);
       cache.current.set(id, value);
       setOverview(value);
       window.requestAnimationFrame(() => window.scrollTo({ top: value.scroll }));
@@ -862,6 +880,8 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
         action={
           <Button
             ref={addTrigger}
+            variant="ghost"
+            size="sm"
             onClick={() => {
               setActionError("");
               setUnavailable(false);
@@ -907,23 +927,22 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
         <>
           <section className={styles.friendSection} aria-labelledby="friend-picker-heading">
             <h2 id="friend-picker-heading" className={styles.sectionTitle}>
-              친구 <span>{data.friends.length}</span>
+              친구들의 오늘 <span>{data.friends.length}</span>
             </h2>
-            <div className={styles.friendPicker} aria-label="친구 선택">
+            <div aria-label="친구들의 오늘">
               {data.friends.slice(0, friendLimit).map((item) => (
-                <button
-                  key={item.id}
-                  ref={(node) => {
+                <DailyFriendCard
+                  key={`${item.id}:${threadVersion}`}
+                  friend={item}
+                  triggerRef={(node) => {
                     if (node) friendTriggers.current.set(item.id, node);
                     else friendTriggers.current.delete(item.id);
                   }}
-                  onClick={() => void openFriend(item.id)}
-                >
-                  <span aria-hidden="true">
-                    <ProfileAvatar avatarKey={item.avatarKey} size={36} />
-                  </span>
-                  <span>{item.displayName}</span>
-                </button>
+                  onOpen={() => void openFriend(item.id)}
+                  onOpenOccurrence={(id) => openDetail(id, item.id)}
+                  onDirtyChange={(dirty) => dailyDirty(item.id, dirty)}
+                  onBusyChange={(busy) => dailyBusy(item.id, busy)}
+                />
               ))}
             </div>
             {data.friends.length > friendLimit ? (
@@ -932,45 +951,18 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
               </Button>
             ) : null}
           </section>
-          <section aria-labelledby="activity-heading">
-            <h2 id="activity-heading" className={styles.sectionTitle}>
-              최근 완료
-            </h2>
-            {error && activity.length ? (
-              <p role="alert" className={styles.error}>
-                {error}
-              </p>
-            ) : null}
-            {loading && !activity.length ? (
-              <p role="status" className={styles.empty}>
-                불러오는 중
-              </p>
-            ) : error && !activity.length ? (
-              <div role="alert" className={styles.empty}>
-                <p>{error}</p>
-                <Button variant="secondary" onClick={() => void loadActivity()}>
-                  다시 시도
-                </Button>
-              </div>
-            ) : !activity.length ? (
-              <p className={styles.empty}>
-                {data.friends.length
-                  ? "아직 친구의 완료 소식이 없어요"
-                  : "친구를 추가하면 완료 소식을 볼 수 있어요"}
-              </p>
-            ) : (
-              <div className={styles.feed}>{activity.map(activityCard)}</div>
-            )}
-            {cursor ? (
-              <Button
-                variant="secondary"
-                loading={pending === "activity-more"}
-                onClick={() => void run("activity-more", () => loadActivity(cursor), "")}
-              >
-                활동 더 보기
+          {loading && !data.friends.length ? <p role="status">친구를 불러오는 중</p> : null}
+          {error ? (
+            <div role="alert">
+              <p>{error}</p>
+              <Button variant="secondary" onClick={() => void loadActivity()}>
+                다시 시도
               </Button>
-            ) : null}
-          </section>
+            </div>
+          ) : null}
+          {!loading && !error && !data.friends.length ? (
+            <p className={styles.empty}>친구를 추가하고 서로의 하루를 응원해 보세요</p>
+          ) : null}
         </>
       ) : (
         <section>
@@ -1035,6 +1027,15 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
               </button>
             ))}
           </div>
+          {friend && overview?.view === "today" ? (
+            <DailyFriendCard
+              key={`${friend.id}:${threadVersion}`}
+              friend={friend}
+              compact
+              onDirtyChange={(dirty) => dailyDirty(friend.id, dirty)}
+              onBusyChange={(busy) => dailyBusy(friend.id, busy)}
+            />
+          ) : null}
           {friendLoading ? <p role="status">불러오는 중</p> : null}
           {friendError ? (
             <div role="alert" className={styles.error}>

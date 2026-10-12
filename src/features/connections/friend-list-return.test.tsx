@@ -40,6 +40,14 @@ vi.mock("@/features/encouragements/encouragement-service", async (original) => (
   listEncouragementSummaries: vi.fn().mockResolvedValue({ items: [] }),
   sendEncouragement: vi.fn(),
 }));
+vi.mock("@/features/encouragements/daily-encouragement-service", () => ({
+  getEncouragementDay: vi.fn().mockResolvedValue({
+    day: "2026-10-12",
+    owner: { id: "demo-friend-1", displayName: "지민", avatarKey: "lemon" },
+    occurrences: [],
+    mine: null,
+  }),
+}));
 vi.mock("@/features/notifications/inbox-read-receipt", () => ({ InboxReadReceipt: () => null }));
 vi.mock("@/features/tasks/occurrence-detail-panel", async () => {
   const { Panel } = await import("@/components/ui/panel");
@@ -73,9 +81,7 @@ beforeEach(() => {
   });
 });
 it.each([
-  { mode: "activity", removed: false },
   { mode: "friend-history", removed: false },
-  { mode: "activity", removed: true },
   { mode: "friend-history", removed: true },
 ])(
   "refreshes through the prior boundary after insertion ($mode, removed=$removed)",
@@ -103,7 +109,7 @@ it.each([
       };
     });
     render(<FriendsScreen />);
-    await screen.findByText("최근 완료 항목");
+    await screen.findByRole("button", { name: "지민" });
     if (mode === "friend-history") {
       fireEvent.click(screen.getByRole("button", { name: "지민" }));
       await waitFor(() => expect(screen.getByRole("tab", { name: "기록" })).not.toBeDisabled());

@@ -463,10 +463,17 @@ select extensions.is(
   1,
   'duplicate completion creates no extra recipient notification'
 );
-select extensions.lives_ok(
+select extensions.throws_ok(
   $$select public.upsert_encouragement((select id from public.task_occurrences limit 1), 'lemon', '잘했어!')$$,
-  'connected friend can encourage a completed occurrence'
+  'P0001', 'ENCOURAGEMENT_NOT_ALLOWED', 'old clients cannot create task comments'
 );
+-- Historical fixture represents a pre-daily migration record.
+reset role;
+insert into public.encouragements(occurrence_id, owner_id, author_id, reaction, message)
+select id, owner_id, '00000000-0000-0000-0000-000000000002', 'lemon', '잘했어!' from public.task_occurrences limit 1;
+insert into public.notifications(recipient_id, actor_id, notification_type, occurrence_id, encouragement_id, event_key)
+select owner_id, author_id, 'encouragement_received', occurrence_id, id, 'encouragement:' || id from public.encouragements;
+set local role authenticated;
 select extensions.is(
   (select count(*)::integer from public.encouragements),
   1,
@@ -716,7 +723,7 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002', true);
 select extensions.is(jsonb_array_length(public.list_social_activity()->'items'), 1, 'friend activity includes a current completed task');
 select extensions.is(jsonb_array_length(public.list_own_history()->'items'), 0, 'history never returns another owner records');
-select extensions.is((public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)#>>'{permissions,canEncourage}')::boolean, true, 'completed friend record permits encouragement');
+select extensions.is((public.get_occurrence_detail(current_setting('test.owner_occurrence_id')::bigint)#>>'{permissions,canEncourage}')::boolean, false, 'legacy completed records are read only');
 select extensions.is((public.list_encouragement_summaries(array[current_setting('test.owner_occurrence_id')::bigint])#>>'{items,0,summary,count}')::integer, 1, 'visible encouragement appears in summary');
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000003', true);
 select extensions.is(jsonb_array_length(public.list_social_activity()->'items'), 0, 'stranger has no activity');

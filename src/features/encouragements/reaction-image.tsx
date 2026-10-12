@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { CharacterSprite } from "@/components/ui/character-sprite";
 import type { Reaction } from "@/types/contracts";
 import styles from "@/features/tasks/task-experience.module.css";
 
@@ -14,12 +14,10 @@ export function ReactionImage({
   className?: string;
 }) {
   return (
-    <Image
-      src={`/reactions/${reaction}.svg`}
+    <CharacterSprite
+      name={`reaction-${reaction}`}
       alt={decorative ? "" : reactionLabels[reaction]}
-      width={32}
-      height={32}
-      unoptimized
+      size={32}
       className={`${styles.reactionImage} ${className}`.trim()}
     />
   );

@@ -25,6 +25,7 @@ export function subscribeInbox(
     if (document.visibilityState === "visible") refresh();
   };
   document.addEventListener("visibilitychange", visible);
+  const timer = window.setInterval(visible, 30000);
   let cleanup: () => void = () => {};
   if (demo) cleanup = subscribeDemoInbox(refreshContent);
   else if (userId) {
@@ -51,6 +52,11 @@ export function subscribeInbox(
       )
       .on(
         "postgres_changes",
+        { event: "*", schema: "public", table: "daily_encouragements" },
+        refreshContent,
+      )
+      .on(
+        "postgres_changes",
         { event: "*", schema: "public", table: "encouragements" },
         refreshContent,
       )
@@ -68,6 +74,7 @@ export function subscribeInbox(
     window.removeEventListener("focus", refreshContent);
     window.removeEventListener("lemon:notifications-changed", refreshReads);
     document.removeEventListener("visibilitychange", visible);
+    window.clearInterval(timer);
     cleanup();
   };
 }

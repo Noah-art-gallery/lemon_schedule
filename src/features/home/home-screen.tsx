@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Plus, ChevronRight, Citrus } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
+import { DailyEncouragementPanel } from "@/features/encouragements/daily-encouragement-panel";
 import { PageHeading } from "@/components/layout/page-heading";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -74,6 +75,8 @@ export function HomeScreen() {
   const pendingRef = useRef(new Set<number>());
   const [retainedOverdue, setRetainedOverdue] = useState<Set<number>>(new Set());
   const [rowErrors, setRowErrors] = useState<Map<number, string>>(new Map());
+  const [dailyTarget, setDailyTarget] = useState<number | null>(null);
+  const [dailyNotification, setDailyNotification] = useState<number | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const closingQuery = useRef(false);
   const addTrigger = useRef<HTMLButtonElement>(null);
@@ -262,10 +265,18 @@ export function HomeScreen() {
         const clean = new URL(window.location.href);
         clean.searchParams.delete("occurrence");
         clean.searchParams.delete("encouragement");
+        clean.searchParams.delete("dailyEncouragement");
+        clean.searchParams.delete("notification");
         window.history.replaceState(window.history.state, "", clean);
         return;
       }
       const params = new URLSearchParams(window.location.search);
+      const dailyId = Number(params.get("dailyEncouragement"));
+      setDailyTarget(Number.isSafeInteger(dailyId) && dailyId > 0 ? dailyId : null);
+      const dailyNotice = Number(params.get("notification"));
+      setDailyNotification(
+        Number.isSafeInteger(dailyNotice) && dailyNotice > 0 ? dailyNotice : null,
+      );
       const id = Number(params.get("occurrence"));
       if (Number.isSafeInteger(id) && id > 0) {
         setSelected(id);
@@ -412,6 +423,21 @@ export function HomeScreen() {
   }
   return (
     <AppShell>
+      {dailyTarget ? (
+        <DailyEncouragementPanel
+          key={dailyTarget}
+          id={dailyTarget}
+          notificationId={dailyNotification}
+          onClose={() => {
+            closingQuery.current = Boolean(window.history.state?.lemonPanel);
+            setDailyTarget(null);
+            const clean = new URL(window.location.href);
+            clean.searchParams.delete("dailyEncouragement");
+            clean.searchParams.delete("notification");
+            window.history.replaceState(window.history.state, "", clean);
+          }}
+        />
+      ) : null}
       <PageHeading
         title="할 일"
         action={

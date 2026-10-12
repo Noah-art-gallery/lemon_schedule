@@ -19,6 +19,7 @@ select extensions.is(
         'task_occurrences',
         'completion_events',
         'encouragements',
+        'daily_encouragements',
         'notifications',
         'pets',
         'pet_unlocks',
@@ -27,7 +28,7 @@ select extensions.is(
       )
       and relation.relrowsecurity
   ),
-  13,
+  14,
   'every exposed MVP table enables row-level security'
 );
 

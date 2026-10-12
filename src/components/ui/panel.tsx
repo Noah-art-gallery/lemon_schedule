@@ -50,6 +50,23 @@ function focusTargets(element: HTMLElement) {
 }
 
 let pendingHistoryBack: Promise<void> | null = null;
+const backgroundLocks = new WeakMap<HTMLElement, { count: number; inert: boolean }>();
+let scrollLocks = 0;
+let originalOverflow = "";
+
+function lockBackground(element: HTMLElement) {
+  const existing = backgroundLocks.get(element);
+  if (existing) existing.count++;
+  else backgroundLocks.set(element, { count: 1, inert: element.inert });
+  element.inert = true;
+}
+
+function unlockBackground(element: HTMLElement) {
+  const lock = backgroundLocks.get(element);
+  if (!lock || --lock.count > 0) return;
+  element.inert = lock.inert;
+  backgroundLocks.delete(element);
+}
 
 function removePanelHistoryEntry() {
   pendingHistoryBack = new Promise<void>((resolve) => {
@@ -94,15 +111,12 @@ export function Panel({
     if (!open || !dialog.current) return;
     const element = dialog.current;
     const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const overflow = document.body.style.overflow;
+    if (scrollLocks++ === 0) originalOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const background = Array.from(document.body.children).filter(
       (child): child is HTMLElement => child instanceof HTMLElement && !child.contains(element),
     );
-    const priorInert = background.map((child) => child.inert);
-    background.forEach((child) => {
-      child.inert = true;
-    });
+    background.forEach(lockBackground);
     const requestedFocus = initialFocusRef?.current;
     const initialFocus =
       requestedFocus && isAvailableForFocus(requestedFocus)
@@ -166,10 +180,8 @@ export function Panel({
       active = false;
       element.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("popstate", onPopState);
-      document.body.style.overflow = overflow;
-      background.forEach((child, index) => {
-        child.inert = priorInert[index];
-      });
+      if (--scrollLocks === 0) document.body.style.overflow = originalOverflow;
+      background.forEach(unlockBackground);
       if (manageHistory && window.history.state?.lemonPanel === historyId) {
         removePanelHistoryEntry();
       }
