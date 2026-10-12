@@ -38,6 +38,10 @@ function NotificationContent() {
   const [reading, setReading] = useState(false);
   const [selected, setSelected] = useState<InboxItem | null>(null);
   const [resolved, setResolved] = useState(false);
+  const selectedRef = useRef(selected);
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
   const generation = useRef(0);
   const paging = useRef(false);
   const readLock = useRef(false);
@@ -47,30 +51,49 @@ function NotificationContent() {
     async (invalidate = true) => {
       const version = ++generation.current;
       const key = `${account}:${filter}`;
+      const target = selectedRef.current;
+      const clearTarget = () => {
+        if (target && selectedRef.current?.id === target.id) {
+          setSelected(null);
+          setResolved(false);
+        }
+      };
       paging.current = false;
       setMore(false);
       if (invalidate) {
         setLoading(true);
         setItems([]);
-        setSelected(null);
-        setResolved(false);
       }
       setError("");
       try {
         if (!demo && !userId) return;
         const page = demo ? demoListInbox({ filter }) : await listInbox({ filter });
         if (version !== generation.current) return;
+        if (invalidate && target) {
+          let fresh = page.items.find((item) => item.id === target.id);
+          if (!fresh) {
+            const exact = demo
+              ? demoListInbox({ filter: "all", cursor: target.id + 1, limit: 1 })
+              : await listInbox({ filter: "all", cursor: target.id + 1, limit: 1 });
+            if (version !== generation.current) return;
+            fresh = exact.items.find((item) => item.id === target.id);
+          }
+          if (
+            !fresh ||
+            fresh.availability !== "available" ||
+            fresh.occurrenceId !== target.occurrenceId ||
+            fresh.encouragementId !== target.encouragementId
+          )
+            clearTarget();
+        }
         setItems(page.items);
         setCursor(page.nextCursor);
         setLoadedScope(key);
-        setSelected((current) => {
-          if (!current) return null;
-          const refreshed = page.items.find((item) => item.id === current.id);
-          return refreshed?.availability === "unavailable" ? null : current;
-        });
       } catch (cause) {
-        if (version === generation.current)
+        if (version === generation.current) {
+          if (invalidate) clearTarget();
           setError(cause instanceof Error ? cause.message : "소식을 불러오지 못했어요");
+        }
       } finally {
         if (version === generation.current) setLoading(false);
       }

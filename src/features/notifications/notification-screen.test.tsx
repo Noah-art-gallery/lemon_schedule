@@ -39,6 +39,7 @@ vi.mock("@/features/tasks/occurrence-detail-panel", () => ({
       {notice}
       <button onClick={() => onResolved(demoGetDetail(1))}>상세 조회 성공</button>
       <p>상세 내용</p>
+      <input aria-label="작성 중인 제목" />
     </section>
   ),
 }));
@@ -222,4 +223,29 @@ it("preserves the open detail and row DOM during a read-only refresh", async () 
   await act(async () => mocks.refresh?.(false));
   expect(screen.getByRole("dialog")).toBeVisible();
   expect(screen.getByRole("button", { name: /지민의 응원/ })).toBe(row);
+});
+
+it("preserves an unchanged target draft on a focus refresh", async () => {
+  render(<NotificationScreen />);
+  fireEvent.click(await screen.findByRole("button", { name: /지민의 응원/ }));
+  const input = screen.getByRole("textbox", { name: "작성 중인 제목" });
+  fireEvent.change(input, { target: { value: "작성 중인 변경" } });
+  await act(async () => mocks.refresh?.(true));
+  expect(screen.getByRole("textbox", { name: "작성 중인 제목" })).toBe(input);
+  expect(input).toHaveValue("작성 중인 변경");
+});
+it("revalidates the exact older target and retains its draft when the first page does not contain it", async () => {
+  const older = { ...cheer, id: 7 };
+  vi.mocked(listInbox).mockImplementation(async ({ cursor }) =>
+    cursor ? { items: [older], nextCursor: null } : { items: [connection], nextCursor: 8 },
+  );
+  render(<NotificationScreen />);
+  fireEvent.click(await screen.findByRole("button", { name: "이전 소식 더 보기" }));
+  fireEvent.click(await screen.findByRole("button", { name: /지민의 응원/ }));
+  const input = screen.getByRole("textbox", { name: "작성 중인 제목" });
+  fireEvent.change(input, { target: { value: "오래된 기록 편집 중" } });
+  await act(async () => mocks.refresh?.(true));
+  expect(listInbox).toHaveBeenCalledWith({ filter: "all", cursor: 8, limit: 1 });
+  expect(input).toHaveValue("오래된 기록 편집 중");
+  expect(input).toBeInTheDocument();
 });
