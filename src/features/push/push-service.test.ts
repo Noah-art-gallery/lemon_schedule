@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { signOut } from "@/features/auth/auth-service";
+
 import {
   disableNativePush,
   getDevicePushState,
@@ -16,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   addListener: vi.fn(),
   remove: vi.fn(),
   getUser: vi.fn(),
+  signOut: vi.fn(),
   from: vi.fn(),
 }));
 vi.mock("@capacitor/core", () => ({
@@ -23,7 +26,10 @@ vi.mock("@capacitor/core", () => ({
 }));
 vi.mock("@capacitor/push-notifications", () => ({ PushNotifications: mocks }));
 vi.mock("@/lib/supabase/client", () => ({
-  getSupabaseClient: () => ({ auth: { getUser: mocks.getUser }, from: mocks.from }),
+  getSupabaseClient: () => ({
+    auth: { getUser: mocks.getUser, signOut: mocks.signOut },
+    from: mocks.from,
+  }),
 }));
 let row: { id: number; active: boolean } | null;
 let queryError: unknown;
@@ -38,6 +44,7 @@ beforeEach(() => {
   queryError = null;
   filters = [];
   mocks.native.mockReturnValue(true);
+  mocks.signOut.mockResolvedValue({ error: null });
   mocks.unregister.mockResolvedValue(undefined);
   mocks.checkPermissions.mockResolvedValue({ receive: "granted" });
   mocks.requestPermissions.mockResolvedValue({ receive: "granted" });
@@ -171,4 +178,95 @@ describe("기기 등록과 해제", () => {
       code: "INVALID_INPUT",
     });
   });
+});
+
+it.each(["기존 화면 경로", "인증 서비스 직접 호출"])(
+  "%s: 늦은 서버 등록 뒤 토큰을 삭제하고 세션을 해제한다",
+  async (path) => {
+    let releaseWrite!: () => void;
+    let writeStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      writeStarted = resolve;
+    });
+    const pendingWrite = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    let savedToken = false;
+    const events: string[] = [];
+    mocks.from.mockImplementation(() => {
+      let deleting = false;
+      const builder = {
+        select: () => builder,
+        eq: () => builder,
+        upsert: () => builder,
+        delete: () => {
+          deleting = true;
+          return builder;
+        },
+        single: async () => {
+          writeStarted();
+          await pendingWrite;
+          savedToken = true;
+          events.push("write");
+          return { data: { id: 1, active: true }, error: null };
+        },
+        then: (resolve: (value: unknown) => void) => {
+          if (deleting) {
+            savedToken = false;
+            events.push("delete");
+          }
+          return resolve({ error: null });
+        },
+      };
+      return builder;
+    });
+    mocks.signOut.mockImplementation(async () => {
+      events.push("signOut");
+      mocks.getUser.mockResolvedValue({ data: { user: null }, error: null });
+      return { error: null };
+    });
+    const registration = registerPushToken("current-user");
+    // Attach rejection handling before intentionally racing logout.
+    const registered = registration.then(
+      () => null,
+      (error) => error,
+    );
+    await started;
+    const logout = (async () => {
+      if (path === "기존 화면 경로") await unregisterPushToken("current-user");
+      await signOut();
+    })();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    try {
+      expect(events).toEqual([]);
+    } finally {
+      releaseWrite();
+      await registered;
+      await logout;
+    }
+    expect(events.indexOf("write")).toBeLessThan(events.indexOf("delete"));
+    expect(events.at(-1)).toBe("signOut");
+    expect(savedToken).toBe(false);
+  },
+);
+
+it("로그아웃 뒤 대기하던 이전 계정의 등록은 시작하지 않는다", async () => {
+  mocks.signOut.mockImplementation(async () => {
+    mocks.getUser.mockResolvedValue({ data: { user: null }, error: null });
+    return { error: null };
+  });
+  const logout = signOut();
+  const registration = registerPushToken("current-user");
+  const rejected = expect(registration).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
+  await logout;
+  await rejected;
+  expect(mocks.requestPermissions).not.toHaveBeenCalled();
+  expect(mocks.register).not.toHaveBeenCalled();
+});
+
+it.each(["서버 삭제", "OS 해제"])("%s 실패 시 로그아웃도 중단한다", async (failure) => {
+  if (failure === "서버 삭제") queryError = { message: "unavailable" };
+  else mocks.unregister.mockRejectedValue(new Error("native unavailable"));
+  await expect(signOut()).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  expect(mocks.signOut).not.toHaveBeenCalled();
 });

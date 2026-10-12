@@ -1,6 +1,7 @@
 import type { AuthError, Session } from "@supabase/supabase-js";
 import { z } from "zod";
 
+import { withPushAccountCleanup } from "@/features/push/push-service";
 import { AppError } from "@/lib/errors";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { isValidTimeZone } from "@/lib/time";
@@ -93,6 +94,8 @@ export async function signIn(
 }
 
 export async function signOut(): Promise<void> {
-  const { error } = await getSupabaseClient().auth.signOut();
-  if (error) throw new AppError("INVALID_INPUT", "로그아웃하지 못했어요. 다시 시도해 주세요.");
+  await withPushAccountCleanup(async () => {
+    const { error } = await getSupabaseClient().auth.signOut();
+    if (error) throw new AppError("INVALID_INPUT", "로그아웃하지 못했어요. 다시 시도해 주세요.");
+  });
 }

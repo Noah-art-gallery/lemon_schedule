@@ -6,7 +6,20 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 
 const deviceKey = "lemon-schedule-device-id";
 
-export async function disableNativePush(): Promise<void> {
+// A logout must drain in-flight token writes while the old account is still authenticated.
+let pushOperation: Promise<unknown> = Promise.resolve();
+
+function serializePush<T>(operation: () => Promise<T>): Promise<T> {
+  const next = pushOperation.then(operation, operation);
+  pushOperation = next.catch(() => undefined);
+  return next;
+}
+
+export function disableNativePush(): Promise<void> {
+  return serializePush(disableNativePushNow);
+}
+
+async function disableNativePushNow(): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
   try {
     await PushNotifications.unregister();
@@ -59,7 +72,13 @@ export async function getDevicePushState(): Promise<{ status: DevicePushStatus }
   }
 }
 
-export async function registerPushToken(
+export function registerPushToken(
+  userId: string,
+): Promise<{ deviceTokenId?: number; active: boolean }> {
+  return serializePush(() => registerPushTokenNow(userId));
+}
+
+async function registerPushTokenNow(
   userId: string,
 ): Promise<{ deviceTokenId?: number; active: boolean }> {
   if (!Capacitor.isNativePlatform()) return { active: false };
@@ -104,19 +123,23 @@ export async function registerPushToken(
     await currentUserId(userId);
     return { deviceTokenId: data.id, active: data.active };
   } catch (cause) {
-    if (registrationStarted) await disableNativePush();
+    if (registrationStarted) await disableNativePushNow();
     throw pushError(cause, "휴대폰 알림 기기를 등록하지 못했어요");
   } finally {
     if (timeout) clearTimeout(timeout);
     const cleanup = await Promise.allSettled(handles.map((handle) => handle.remove()));
     if (cleanup.some((result) => result.status === "rejected")) {
-      if (registrationStarted) await disableNativePush();
+      if (registrationStarted) await disableNativePushNow();
       throw new AppError("INVALID_INPUT", "휴대폰 알림 연결을 정리하지 못했어요");
     }
   }
 }
 
-export async function unregisterPushToken(userId: string): Promise<{ active: false }> {
+export function unregisterPushToken(userId: string): Promise<{ active: false }> {
+  return serializePush(() => unregisterPushTokenNow(userId));
+}
+
+async function unregisterPushTokenNow(userId: string): Promise<{ active: false }> {
   if (!Capacitor.isNativePlatform()) return { active: false };
   const results = await Promise.allSettled([
     Promise.resolve().then(async () => {
@@ -127,13 +150,26 @@ export async function unregisterPushToken(userId: string): Promise<{ active: fal
         .eq("device_id", getDeviceId());
       if (error) throw new AppError("INVALID_INPUT", "휴대폰 알림 기기를 해제하지 못했어요");
     }),
-    disableNativePush(),
+    disableNativePushNow(),
   ]);
   const failure = results.find((result) => result.status === "rejected");
   if (failure?.status === "rejected") {
     throw pushError(failure.reason, "휴대폰 알림 기기를 해제하지 못했어요");
   }
   return { active: false };
+}
+
+/** Keep token cleanup and the auth change in one operation so no write can slip between them. */
+export function withPushAccountCleanup<T>(changeAccount: () => Promise<T>): Promise<T> {
+  return serializePush(async () => {
+    if (Capacitor.isNativePlatform()) {
+      const { data, error } = await getSupabaseClient().auth.getUser();
+      if (error) throw new AppError("UNAUTHENTICATED", "로그인 상태를 확인해 주세요");
+      if (data.user) await unregisterPushTokenNow(data.user.id);
+      else await disableNativePushNow();
+    }
+    return changeAccount();
+  });
 }
 
 export async function listenForPushNavigation(): Promise<() => Promise<void>> {
