@@ -55,7 +55,7 @@ test("간결한 인증 화면에서 초대 코드를 이어간다", async ({ pag
 
 test("소식에서 응원 원문을 연 뒤 모든 종류를 읽음 처리한다", async ({ page }) => {
   await page.goto("/notifications/");
-  await page.getByRole("button", { name: /지민.*응원/ }).click();
+  await page.getByRole("button", { name: /지민의 응원 물 2잔 마시기/ }).click();
   await expect(page.getByRole("dialog", { name: "할 일 상세" })).toBeVisible();
   await expect(
     page.getByRole("dialog").getByText("오늘도 잊지 않고 했네!", { exact: true }),
@@ -68,7 +68,7 @@ test("소식에서 응원 원문을 연 뒤 모든 종류를 읽음 처리한다
 
 test("펫 그리기 패널을 닫으면 진입 버튼으로 돌아간다", async ({ page }) => {
   await page.goto("/pet/");
-  await expect(page.getByRole("option", { name: /레몬 노랑/ })).toBeDisabled();
+  await expect(page.getByRole("option", { name: /레몬 노랑/ })).toHaveAttribute("disabled", "");
   const trigger = page.getByRole("button", { name: "새로 그리기" });
   await trigger.click();
   await expect(page.getByLabel("나만의 레몬 펫을 그리는 도화지")).toBeVisible();
@@ -125,11 +125,11 @@ test("시간과 반복을 접어도 값이 남고 밀린 완료 행은 자리를
   await expect(panel.getByLabel("시간 (선택)")).not.toBeVisible();
   await panel.getByRole("button", { name: "시간·반복 펼치기" }).click();
   await panel.getByLabel("시간 (선택)").fill("18:30");
-  await panel.getByLabel("반복", { exact: true }).selectOption("weekly");
+  await panel.getByRole("combobox", { name: "반복", exact: true }).selectOption("weekly");
   await panel.getByRole("button", { name: "시간·반복 접기" }).click();
   await panel.getByRole("button", { name: "시간·반복 펼치기" }).click();
   await expect(panel.getByLabel("시간 (선택)")).toHaveValue("18:30");
-  await expect(panel.getByLabel("반복", { exact: true })).toHaveValue("weekly");
+  await expect(panel.getByRole("combobox", { name: "반복", exact: true })).toHaveValue("weekly");
   await panel.getByRole("button", { name: "닫기", exact: true }).click();
   await panel.getByRole("button", { name: "내용 버리기" }).click();
   const complete = page.getByRole("button", { name: "도서관 책 반납 완료", exact: true });
