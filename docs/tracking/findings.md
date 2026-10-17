@@ -1,10 +1,12 @@
 # 현재 확인된 문제
 
-## 새 원격 기능 미적용
+## 운영 DB 적용 완료와 원격 검사 범위 (2026-10-17)
 
-로컬에는 직접 소식·친구 활동 조회, 버전별 펫 경로, 차단·소유자 숨김 제거, 선택형 프로필 이모지, 하루 응원 migration 다섯 개와 갱신된 발송 함수가 있지만 원격에는 아직 적용하지 않았다. 원격 이력을 확인해 미적용 migration과 함수를 배포한 뒤 실제 계정 흐름을 확인해야 한다. 로컬 15개 migration 상태와 SQL 검사 244개는 이전 검증 기록이며 원격 적용 증거가 아니다.
+사용자 승인 후 미적용 migration 5개를 순서대로 적용했고 원격·로컬 이력 15개가 일치한다. 차단 0개와 소유자 숨김 응원 1개의 표시 변경을 확인했으며 최신 발송 함수 ACTIVE v5를 배포했다. 기존 CLI 접근 문제는 연결된 Supabase 도구로 우회했다. 운영 DB 호환성 배포 차단은 해소됐다.
 
-2026-10-13 완료 모션 작업의 원격 적용 준비에서 `supabase migration list --project-ref jthltqvcoezawoplaxkd`는 IPv6 미지원 오류, 안내된 `supabase link --project-ref jthltqvcoezawoplaxkd`는 서버의 프로젝트 접근 권한 거부를 반환했다. 현재 CLI 계정으로는 원격 상태 확인과 일괄 적용을 진행할 수 없다. 프로젝트 접근 권한이 있는 계정으로 CLI 로그인이 필요하며 DB 변경 명령·함수 배포는 실행하지 않았다. 사용자에게 접근 가능한 CLI 로그인 요청을 전달했다.
+원격 보안·정책·하루 응원 pgTAP 59개를 통과했고 모두 rollback했다. 행동 검사 002는 기존 응원 전체에서 알림을 준비하는 fixture가 운영 unique key와 충돌해 전체 rollback됐다. 이 검사는 빈 DB 전용이며 운영 통과 근거로 쓰지 않는다. 003·005의 전역 fixture도 원격에서는 실행하지 않았다. 전체 검사는 격리된 로컬 DB에서 실행한다. 운영 테스트 UUID 계정은 0개다.
+
+Security Advisor는 인증 사용자용 보안 RPC 26개, 사용자 정책 없는 서버 전용 발송 장부를 표시하며 이는 의도한 권한 계약이다. [유출 비밀번호 보호](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection)는 비활성 상태이며 별도 인증 운영 설정으로 남아 있다.
 
 ## 네이티브 빌드와 실제 휴대폰 알림 미검증
 

@@ -1,5 +1,7 @@
 .editor {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 16px;
 }
 .canvas {
@@ -47,6 +49,7 @@
 }
 .actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
