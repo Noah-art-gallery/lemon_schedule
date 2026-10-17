@@ -1,0 +1,141 @@
+.layout {
+  max-width: 800px;
+  display: grid;
+  gap: 24px;
+}
+.summary {
+  display: grid;
+  grid-template-columns: minmax(140px, 240px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: center;
+}
+.appearance {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.appearance > button {
+  padding-inline: 12px;
+  white-space: normal;
+}
+.growth {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.stage {
+  position: relative;
+  background: var(--lemon-50);
+  border-radius: 20px;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+}
+.garden {
+  background: var(--leaf-100);
+}
+.image {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+.accessory {
+  position: absolute;
+  z-index: 1;
+  top: 16%;
+  left: 48%;
+  color: var(--leaf-600);
+  transform: rotate(-20deg);
+}
+.level {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.growth h2 {
+  margin: 4px 0 12px;
+  font-size: 36px;
+  line-height: 1.2;
+  letter-spacing: -0.04em;
+}
+.growth h2 span {
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.growth p {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 6px 0 0;
+}
+.growth p.unlock {
+  color: var(--ink);
+  margin: 16px 0;
+}
+.progress {
+  height: 6px;
+  background: var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  max-width: 240px;
+}
+.progress span {
+  display: block;
+  height: 100%;
+  background: var(--lemon-500);
+  border-radius: inherit;
+}
+.decorations {
+  border-top: 1px solid var(--line);
+}
+.decorations h2 {
+  font-size: 18px;
+  margin: 22px 0 8px;
+}
+.setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 52%);
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.setting strong {
+  font-size: 16px;
+  font-weight: 500;
+}
+.setting small {
+  display: block;
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.setting select {
+  width: 100%;
+  min-width: 0;
+}
+.discard {
+  display: grid;
+  gap: 16px;
+}
+.imageError {
+  grid-column: 1 / -1;
+}
+@media (max-width: 480px) {
+  .summary {
+    gap: 16px;
+    grid-template-columns: minmax(120px, 44%) minmax(0, 1fr);
+  }
+  .growth h2 {
+    font-size: 30px;
+  }
+  .growth p.unlock {
+    font-size: 14px;
+  }
+  .setting {
+    align-items: start;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 14px 0;
+  }
+}

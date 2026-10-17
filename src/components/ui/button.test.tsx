@@ -14,7 +14,7 @@ describe("Button", () => {
       </Button>,
     );
 
-    const button = screen.getByRole("button", { name: "잠시만요" });
+    const button = screen.getByRole("button", { name: "저장" });
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute("aria-busy", "true");
     await user.click(button);

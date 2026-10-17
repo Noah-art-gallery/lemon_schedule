@@ -78,11 +78,13 @@ export async function savePetDrawing(
   userId: string,
   blob: Blob,
 ): Promise<{ drawingPath: string; updatedAt: string }> {
-  const path = `${userId}/pet.png`;
+  // Publish a fresh private asset only after upload succeeds; failed metadata writes
+  // must never overwrite the currently saved drawing.
+  const path = `${userId}/${crypto.randomUUID()}.png`;
   const client = getSupabaseClient();
   const upload = await client.storage.from("pet-drawings").upload(path, blob, {
     contentType: "image/png",
-    upsert: true,
+    upsert: false,
   });
   if (upload.error) throw new AppError("INVALID_INPUT", "펫 그림을 저장하지 못했어요.");
 

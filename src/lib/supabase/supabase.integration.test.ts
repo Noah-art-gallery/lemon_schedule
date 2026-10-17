@@ -114,7 +114,7 @@ integrationDescribe("Supabase completion concurrency", () => {
     expect(friendNotifications).toHaveLength(1);
   }, 30_000);
 
-  it("never leaves a connection or pending request when block races acceptance", async () => {
+  it("requires fresh recipient approval after disconnecting an accepted connection", async () => {
     const requester = createClient<Database>(url!, publishableKey!);
     const addressee = createClient<Database>(url!, publishableKey!);
     const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -149,32 +149,34 @@ integrationDescribe("Supabase completion concurrency", () => {
       await requester.rpc("request_connection", { target_invite_code: invite.invite_code }),
     );
 
-    await Promise.all([
-      addressee.rpc("respond_connection_request", {
+    requireData(
+      await addressee.rpc("respond_connection_request", {
         target_request_id: requestId,
         accept_request: true,
       }),
-      requester.rpc("block_user", { target_user_id: addresseeId }),
-    ]);
-
-    const connections = requireData(
-      await requester.from("connections").select("created_at", { count: "exact" }),
     );
+    requireData(await requester.rpc("disconnect_friend", { friend_id: addresseeId }));
+    expect(requireData(await requester.from("connections").select("id"))).toHaveLength(0);
+    const freshRequestId = requireData(
+      await requester.rpc("request_connection", {
+        target_invite_code: invite.invite_code,
+      }),
+    );
+    expect(freshRequestId).not.toBe(requestId);
+    expect(requireData(await requester.from("connections").select("id"))).toHaveLength(0);
     const pendingRequests = requireData(
-      await requester
-        .from("connection_requests")
-        .select("id", { count: "exact" })
-        .eq("status", "pending"),
+      await requester.from("connection_requests").select("id").eq("status", "pending"),
     );
-    const blocks = requireData(
-      await requester
-        .from("blocks")
-        .select("created_at", { count: "exact" })
-        .eq("blocked_id", addresseeId),
+    expect(pendingRequests.map((request) => request.id)).toEqual([freshRequestId]);
+    requireData(
+      await addressee.rpc("respond_connection_request", {
+        target_request_id: freshRequestId,
+        accept_request: true,
+      }),
     );
-
-    expect(connections).toHaveLength(0);
-    expect(pendingRequests).toHaveLength(0);
-    expect(blocks).toHaveLength(1);
+    expect(requireData(await requester.from("connections").select("id"))).toHaveLength(1);
+    expect(
+      requireData(await requester.from("connection_requests").select("id").eq("status", "pending")),
+    ).toHaveLength(0);
   }, 30_000);
 });

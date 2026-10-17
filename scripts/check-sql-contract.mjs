@@ -19,11 +19,11 @@ const protectedTables = [
   "profile_private",
   "connection_requests",
   "connections",
-  "blocks",
   "tasks",
   "task_occurrences",
   "completion_events",
   "encouragements",
+  "daily_encouragements",
   "notifications",
   "pets",
   "pet_unlocks",
@@ -46,6 +46,10 @@ for (const table of protectedTables) {
 }
 
 for (const rpc of [
+  "get_daily_encouragement",
+  "get_encouragement_day",
+  "upsert_daily_encouragement",
+  "delete_daily_encouragement",
   "request_connection",
   "respond_connection_request",
   "complete_occurrence",
@@ -58,7 +62,6 @@ for (const rpc of [
   "list_task_occurrences",
   "get_owner_today",
   "update_my_profile",
-  "list_blocked_profiles",
   "set_pet_decorations",
 ]) {
   assert.match(sql, new RegExp(`create function public\\.${rpc}\\(`), `${rpc} RPC missing`);
@@ -98,11 +101,6 @@ assert.match(
 );
 assert.match(sql, /deleted_at timestamptz/, "tasks must support logical deletion");
 assert.match(sql, /'deleted_by_author'/, "encouragement deletion must preserve a tombstone");
-assert.match(
-  sql,
-  /visibility = 'visible' or author_id = \(select auth\.uid\(\)\)/,
-  "hidden encouragement must remain visible to its author",
-);
 assert.match(sql, /pg_catalog\.pg_timezone_names/, "time zones must be validated as IANA names");
 assert.match(
   sql,
@@ -121,8 +119,6 @@ for (const rpc of [
   "respond_connection_request",
   "cancel_connection_request",
   "disconnect_friend",
-  "block_user",
-  "unblock_user",
 ]) {
   const functionBody = sql.match(
     new RegExp(`create function public\\.${rpc}\\([\\s\\S]*?\\n\\$\\$;`),
@@ -227,6 +223,157 @@ assert.match(
   "migration must reject public RPC bridges into webhook internals",
 );
 assert.doesNotMatch(webhookBody, /[a-f0-9]{64}/, "webhook must not embed a secret literal");
+
+for (const rpc of [
+  "list_social_activity",
+  "list_own_history",
+  "get_occurrence_detail",
+  "list_encouragement_summaries",
+  "list_inbox",
+  "get_inbox_unread_count",
+  "mark_all_inbox_read",
+]) {
+  const body = sql.match(new RegExp(`create function public\\.${rpc}\\([\\s\\S]*?\\n\\$\\$;`))?.[0];
+  assert.ok(body, `${rpc} read contract missing`);
+  assert.match(body, /set search_path = ''/, `${rpc} pins search path`);
+  assert.match(body, /auth\.uid\(\) is null/, `${rpc} requires authentication`);
+  assert.match(
+    sql,
+    new RegExp(`revoke all on function public\\.${rpc}\\([^;]+from public, anon`),
+    `${rpc} denies anonymous access`,
+  );
+}
+const readSql = readFileSync(
+  join(migrationDirectory, "20261012120000_social_read_models.sql"),
+  "utf8",
+);
+assert.match(
+  readSql,
+  /\(o\.first_completed_at, o\.id\) < \(cursor_completed_at, cursor_occurrence_id\)/,
+  "completion feeds use stable keyset pagination",
+);
+assert.match(readSql, /id <= through_id/, "mark all honors a high-water boundary");
+assert.match(
+  readSql,
+  /visibility = 'visible'/,
+  "only visible encouragements enter public previews",
+);
+assert.match(
+  readSql,
+  /private\.can_read_occurrence\(o\.id\)/,
+  "batch summaries omit unauthorized targets",
+);
+
+const petVersionSql = readFileSync(
+  join(migrationDirectory, "20261012130000_versioned_pet_drawings.sql"),
+  "utf8",
+);
+assert.match(
+  petVersionSql,
+  /add constraint pets_drawing_path_check/,
+  "versioned pet paths remain constrained",
+);
+assert.match(petVersionSql, /user_id::text/, "drawing folder must match the pet owner");
+assert.ok(
+  petVersionSql.includes(
+    "/(pet|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[.]png$",
+  ),
+  "legacy and immutable UUID PNG filenames are accepted without nested paths",
+);
+assert.doesNotMatch(
+  petVersionSql,
+  /(?:drop|alter) policy/i,
+  "versioned saves retain existing private storage policies",
+);
+
+const socialPolicySql = readFileSync(
+  join(migrationDirectory, "20261012140000_remove_blocks_and_owner_hiding.sql"),
+  "utf8",
+).toLowerCase();
+for (const signature of [
+  "block_user(uuid)",
+  "unblock_user(uuid)",
+  "list_blocked_profiles()",
+  "hide_encouragement(bigint, boolean)",
+]) {
+  assert.ok(
+    socialPolicySql.includes(`drop function public.${signature};`),
+    `${signature} must be removed`,
+  );
+}
+assert.match(
+  socialPolicySql,
+  /drop table public\.blocks restrict;/,
+  "block storage must be removed without cascading unrelated objects",
+);
+assert.doesNotMatch(socialPolicySql, /\bcascade\s*;/, "policy removal must not cascade");
+assert.match(
+  socialPolicySql,
+  /update public\.encouragements set visibility = 'visible' where visibility = 'hidden_by_owner';/,
+  "only owner-hidden rows are restored",
+);
+assert.match(
+  socialPolicySql,
+  /check \(visibility in \('visible', 'deleted_by_author'\)\)/,
+  "visibility has exactly the final two states",
+);
+for (const name of [
+  "private.are_connected",
+  "public.request_connection",
+  "public.respond_connection_request",
+  "public.complete_occurrence",
+  "public.list_inbox",
+  "public.upsert_encouragement",
+  "public.get_occurrence_detail",
+]) {
+  const body = socialPolicySql.match(
+    new RegExp(`create or replace function ${name.replaceAll(".", "\\.")}\\([\\s\\S]*?\\n\\$\\$;`),
+  )?.[0];
+  assert.ok(body, `${name} must explicitly replace its obsolete dependency`);
+  assert.doesNotMatch(
+    body,
+    /public\.blocks|hidden_by_owner/,
+    `${name} must not retain removed policy`,
+  );
+}
+
+const avatarSql = readFileSync(
+  join(migrationDirectory, "20261012150000_profile_avatars.sql"),
+  "utf8",
+).toLowerCase();
+assert.match(
+  avatarSql,
+  /avatar_key text not null default 'lemon'/,
+  "avatars have a non-null safe default",
+);
+assert.match(
+  avatarSql,
+  /'lemon', 'cat', 'dog', 'rabbit', 'bear', 'fox', 'penguin', 'flower'/,
+  "avatars accept the fixed public key set",
+);
+assert.match(
+  avatarSql,
+  /new_avatar_key text default null/,
+  "partial profile updates preserve omitted avatar keys",
+);
+assert.match(
+  avatarSql,
+  /where id = current_user_id/,
+  "avatar writes remain scoped to the authenticated owner",
+);
+assert.match(
+  avatarSql,
+  /revoke all on function public\.update_my_profile\(text, text, text\) from public, anon/,
+  "avatar RPC rejects anonymous callers",
+);
+assert.doesNotMatch(
+  avatarSql,
+  /(?:create|drop|alter) policy|grant update/,
+  "avatars preserve existing RLS and do not add direct update permissions",
+);
+for (const field of ["avatarkey", "authoravatarkey", "actoravatarkey"]) {
+  assert.ok(avatarSql.includes(`'${field}'`), `${field} is included in public read projections`);
+}
 
 console.log(
   `SQL contract checks passed (${protectedTables.length} RLS tables, ${migrations.length} migration).`,

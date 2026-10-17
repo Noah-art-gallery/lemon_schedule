@@ -1,0 +1,249 @@
+.notice {
+  padding: 10px 14px;
+  background: var(--lemon-50);
+  border-radius: 10px;
+  margin: 0 0 16px;
+}
+.error {
+  color: var(--danger);
+  padding: 12px 0;
+}
+.requestEntry {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  margin-bottom: 24px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--muted);
+}
+.requestEntry strong {
+  color: var(--leaf-600);
+}
+.requestEntry span {
+  margin-left: auto;
+  font-size: 12px;
+}
+.friendSection {
+  margin: 0 0 28px;
+}
+.friendPicker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
+}
+.friendPicker button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  min-width: 0;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+.friendPicker button > span:last-child {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.sectionTitle span {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 400;
+}
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0 0 16px;
+}
+.feed {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.activity {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 16px;
+  min-width: 0;
+}
+.activityMeta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 15px;
+}
+.activityMeta strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.completedAt {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.activityOpen {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+  border: 0;
+  background: none;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 0;
+}
+.activityOpen strong {
+  font-size: 18px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.empty {
+  color: var(--muted);
+  padding: 32px 16px;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.friendHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.friendHeader h2 {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  margin: 0;
+  font-size: 20px;
+}
+.management {
+  position: relative;
+}
+.menu {
+  position: absolute;
+  right: 0;
+  top: 48px;
+  z-index: 2;
+  display: grid;
+  width: 160px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 8px 20px #0001;
+}
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  gap: 4px;
+}
+.tabs button {
+  flex: 1;
+  min-height: 48px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  padding: 10px;
+  color: var(--muted);
+}
+.tabs button[aria-selected="true"] {
+  border-bottom-color: var(--lemon-500);
+  color: var(--ink);
+  font-weight: 700;
+}
+.range {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 16px 0;
+}
+.task > time {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 12px 14px 0;
+}
+.addBody {
+  display: grid;
+  gap: 28px;
+}
+.addBody h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+.addBody h3 span {
+  color: var(--muted);
+  margin-left: 4px;
+}
+.addBody p {
+  color: var(--muted);
+  font-size: 14px;
+}
+.addBody form {
+  display: grid;
+  gap: 12px;
+}
+.code {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.code strong {
+  font-size: 20px;
+  letter-spacing: 1px;
+  overflow-wrap: anywhere;
+}
+.request {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.request > strong,
+.request > div:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.request > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.request p {
+  width: 100%;
+  margin: 0;
+}
+.highlight {
+  background: var(--lemon-50);
+  margin: 0 -8px;
+  padding: 12px 8px;
+  border-radius: 8px;
+}
+@media (max-width: 480px) {
+  .activity {
+    padding: 14px;
+  }
+  .request {
+    flex-wrap: wrap;
+  }
+}

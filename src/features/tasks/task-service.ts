@@ -1,3 +1,15 @@
+import type { CompletionCursor, OwnHistoryItem, OccurrenceDetail } from "@/types/contracts";
+import {
+  parseRead,
+  readError,
+  historyInput,
+  completionCursor,
+  occurrenceSchema,
+  summarySchema,
+  ownerSchema,
+  encouragementSchema,
+  positiveId,
+} from "./read-contract";
 import { z } from "zod";
 
 import { AppError } from "@/lib/errors";
@@ -183,4 +195,87 @@ export async function getOwnOccurrence(
     .single();
   if (error || !data) throw new AppError("NOT_FOUND", "완료 기록을 찾지 못했어요.");
   return data;
+}
+
+export async function listOwnHistory(
+  input: { cursor?: CompletionCursor; limit?: number } = {},
+): Promise<{ items: OwnHistoryItem[]; nextCursor: CompletionCursor | null }> {
+  const values = parseRead(historyInput, input);
+  const { data, error } = await getSupabaseClient().rpc("list_own_history", {
+    cursor_completed_at: values.cursor?.firstCompletedAt ?? null,
+    cursor_occurrence_id: values.cursor?.occurrenceId ?? null,
+    page_limit: values.limit,
+  });
+  readError(error);
+  return parseRead(
+    z.object({
+      items: z.array(
+        z.object({
+          occurrence: occurrenceSchema,
+          taskDeleted: z.boolean(),
+          summary: summarySchema,
+        }),
+      ),
+      nextCursor: completionCursor.nullable(),
+    }),
+    data,
+  );
+}
+export async function getOccurrenceDetail(input: {
+  occurrenceId: number;
+}): Promise<OccurrenceDetail> {
+  const { occurrenceId } = parseRead(z.object({ occurrenceId: positiveId }), input);
+  const { data, error } = await getSupabaseClient().rpc("get_occurrence_detail", {
+    target_occurrence_id: occurrenceId,
+  });
+  readError(error);
+  return parseRead(
+    z.object({
+      occurrence: occurrenceSchema,
+      owner: ownerSchema,
+      taskDeleted: z.boolean(),
+      permissions: z.object({
+        canEdit: z.boolean(),
+        canComplete: z.boolean(),
+        canEncourage: z.boolean(),
+      }),
+      encouragements: z.array(encouragementSchema),
+      summary: summarySchema,
+    }),
+    data,
+  );
+}
+
+/** Read the schedule source, never derive a monthly anchor from a clamped occurrence. */
+export async function getTaskSource(taskId: number): Promise<TaskInput> {
+  const { data, error } = await getSupabaseClient()
+    .from("tasks")
+    .select("title, due_date, due_time, recurrence")
+    .eq("id", taskId)
+    .is("deleted_at", null)
+    .single();
+  if (error || !data) throw new AppError("NOT_FOUND", "수정할 할 일을 찾지 못했어요");
+  return {
+    title: data.title,
+    dueDate: data.due_date,
+    dueTime: data.due_time?.slice(0, 5) ?? "",
+    recurrence: data.recurrence,
+  };
+}
+
+/** Explicitly requested windows can grow beyond the RPC's 800-day per-request limit. */
+export async function listOccurrenceWindow(input: { ownerId: string; from: string; to: string }) {
+  const { addUtcDays } = await import("./recurrence");
+  const occurrences: TaskOccurrenceRow[] = [];
+  let from = input.from;
+  let today = "";
+  do {
+    const boundary = addUtcDays(from, 800);
+    const to = boundary < input.to ? boundary : input.to;
+    const page = await listOccurrences({ ownerId: input.ownerId, from, to });
+    occurrences.push(...page.occurrences);
+    today = page.today;
+    from = addUtcDays(to, 1);
+  } while (from <= input.to);
+  return { occurrences, today };
 }

@@ -1,258 +1,392 @@
 "use client";
-
-import { Bell, Check, Citrus, Smartphone, Sparkles } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
+import { ProfileAvatar } from "@/components/ui/profile-avatar";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
-
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeading } from "@/components/layout/page-heading";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { FeedbackToast, useFeedback } from "@/components/ui/feedback";
 import { StatePanel } from "@/components/ui/state-panel";
 import { useAuth } from "@/features/auth/auth-provider";
-import { registerPushToken } from "@/features/push/push-service";
-import {
-  listNotifications,
-  markAllNotificationsRead,
-  markNotificationRead,
-  notificationTarget,
-  type NotificationItem,
-} from "./notification-service";
-
-const demoNotifications: NotificationItem[] = [
-  {
-    id: 1,
-    recipient_id: "demo",
-    actor_id: "mom",
-    notification_type: "task_completed",
-    occurrence_id: 1,
-    connection_request_id: null,
-    encouragement_id: null,
-    event_key: "demo-task",
-    read_at: null,
-    created_at: "2026-09-01T09:00:00+09:00",
-    actorName: "엄마",
-  },
-  {
-    id: 2,
-    recipient_id: "demo",
-    actor_id: "mom",
-    notification_type: "encouragement_received",
-    occurrence_id: null,
-    connection_request_id: null,
-    encouragement_id: 2,
-    event_key: "demo-encouragement",
-    read_at: null,
-    created_at: "2026-09-01T08:40:00+09:00",
-    actorName: "엄마",
-  },
+import { OccurrenceDetailPanel } from "@/features/tasks/occurrence-detail-panel";
+import { DailyEncouragementPanel } from "@/features/encouragements/daily-encouragement-panel";
+import { ReactionImage } from "@/features/encouragements/reaction-image";
+import type { InboxFilter, InboxItem, OccurrenceDetail } from "@/types/contracts";
+import { listInbox, markAllInboxRead } from "./notification-service";
+import { demoListInbox, demoMarkAllInboxRead } from "./demo-inbox-store";
+import { subscribeInbox } from "./inbox-events";
+import { InboxReadReceipt } from "./inbox-read-receipt";
+import styles from "./inbox.module.css";
+const filters: { key: InboxFilter; label: string }[] = [
+  { key: "all", label: "전체" },
+  { key: "encouragement", label: "응원" },
+  { key: "connection", label: "연결" },
 ];
-
-function notificationCopy(item: NotificationItem) {
-  if (item.notification_type === "task_completed")
-    return `${item.actorName}님이 할 일을 완료했어요.`;
-  if (item.notification_type === "encouragement_received")
-    return `${item.actorName}님이 레몬 응원을 보냈어요.`;
-  if (item.notification_type === "connection_accepted")
-    return `${item.actorName}님이 친구 연결을 수락했어요.`;
-  return `${item.actorName}님이 친구 연결을 요청했어요.`;
-}
-
 export function NotificationScreen() {
-  const router = useRouter();
+  const { demo, user } = useAuth();
+  return <NotificationContent key={demo ? "demo" : (user?.id ?? "signed-out")} />;
+}
+function NotificationContent() {
   const { user, demo } = useAuth();
-  const [items, setItems] = useState<NotificationItem[]>(demo ? demoNotifications : []);
-  const [nextCursor, setNextCursor] = useState<number | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const userId = user?.id;
+  const router = useRouter();
+  const [filter, setFilter] = useState<InboxFilter>("all");
+  const [items, setItems] = useState<InboxItem[]>([]);
+  const [cursor, setCursor] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [more, setMore] = useState(false);
+  const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-
-  const load = useCallback(async () => {
-    if (demo || !user) return;
-    try {
-      const page = await listNotifications({ userId: user.id });
-      setItems(page.items);
-      setNextCursor(page.nextCursor);
-    } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : "알림을 불러오지 못했어요.");
-    }
-  }, [demo, user]);
-
+  const { feedback, showFeedback, dismissFeedback } = useFeedback();
+  const [reading, setReading] = useState(false);
+  const [selected, setSelected] = useState<InboxItem | null>(null);
+  const [resolved, setResolved] = useState(false);
+  const returnFocusId = useRef<number | null>(null);
   useEffect(() => {
-    if (demo || !user) return;
-    let active = true;
-    void listNotifications({ userId: user.id })
-      .then((result) => {
-        if (active) {
-          setItems(result.items);
-          setNextCursor(result.nextCursor);
+    if (selected || loading || returnFocusId.current === null) return;
+    const row = document.getElementById(`inbox-item-${returnFocusId.current}`);
+    const fallback = document.getElementById(`inbox-filter-${filter}`);
+    (row ?? fallback)?.focus({ preventScroll: true });
+    returnFocusId.current = null;
+  }, [selected, loading, items, filter]);
+  const selectedRef = useRef(selected);
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
+  const loadedBoundary = useRef<{ scope: string; oldestId: number | null }>({
+    scope: "",
+    oldestId: null,
+  });
+  const generation = useRef(0);
+  const paging = useRef(false);
+  const readLock = useRef(false);
+  const account = demo ? "demo" : (userId ?? "");
+  const [loadedScope, setLoadedScope] = useState("");
+  const load = useCallback(
+    async (invalidate = true) => {
+      const version = ++generation.current;
+      const key = `${account}:${filter}`;
+      const target = selectedRef.current;
+      const oldestId =
+        loadedBoundary.current.scope === key ? loadedBoundary.current.oldestId : null;
+      const clearTarget = () => {
+        if (target && selectedRef.current?.id === target.id) {
+          returnFocusId.current = target.id;
+          setSelected(null);
+          setResolved(false);
         }
-      })
-      .catch((cause: unknown) => {
-        if (active) setNotice(cause instanceof Error ? cause.message : "알림을 불러오지 못했어요.");
-      });
+      };
+      paging.current = false;
+      setMore(false);
+      if (invalidate) {
+        setLoading(true);
+        setItems([]);
+      }
+      setError("");
+      try {
+        if (!demo && !userId) return;
+        const page = demo ? demoListInbox({ filter }) : await listInbox({ filter });
+        if (version !== generation.current) return;
+        while (
+          oldestId !== null &&
+          page.nextCursor !== null &&
+          (page.items.at(-1)?.id ?? Infinity) > oldestId
+        ) {
+          const next = demo
+            ? demoListInbox({ filter, cursor: page.nextCursor })
+            : await listInbox({ filter, cursor: page.nextCursor });
+          if (version !== generation.current) return;
+          page.items.push(...next.items);
+          page.nextCursor = next.nextCursor;
+        }
+        if (invalidate && target) {
+          let fresh = page.items.find((item) => item.id === target.id);
+          if (!fresh) {
+            const exact = demo
+              ? demoListInbox({ filter: "all", cursor: target.id + 1, limit: 1 })
+              : await listInbox({ filter: "all", cursor: target.id + 1, limit: 1 });
+            if (version !== generation.current) return;
+            fresh = exact.items.find((item) => item.id === target.id);
+          }
+          if (
+            !fresh ||
+            fresh.availability !== "available" ||
+            fresh.occurrenceId !== target.occurrenceId ||
+            fresh.encouragementId !== target.encouragementId ||
+            fresh.dailyEncouragementId !== target.dailyEncouragementId
+          )
+            clearTarget();
+        }
+        loadedBoundary.current = { scope: key, oldestId: page.items.at(-1)?.id ?? null };
+        setItems(page.items);
+        setCursor(page.nextCursor);
+        setLoadedScope(key);
+      } catch (cause) {
+        if (version === generation.current) {
+          if (invalidate) clearTarget();
+          setError(cause instanceof Error ? cause.message : "소식을 불러오지 못했어요");
+        }
+      } finally {
+        if (version === generation.current) setLoading(false);
+      }
+    },
+    [account, filter, demo, userId],
+  );
+  useEffect(() => {
+    let active = true;
+    const requests = generation;
+    queueMicrotask(() => {
+      if (active) void load();
+    });
+    const stop = subscribeInbox(userId, demo, (invalidate) => void load(invalidate ?? true));
     return () => {
       active = false;
+      requests.current++;
+      stop();
     };
-  }, [demo, user]);
-
+  }, [load, userId, demo]);
   async function loadMore() {
-    if (demo || !user || nextCursor === null || loadingMore) return;
-    setLoadingMore(true);
+    if (cursor === null || paging.current) return;
+    paging.current = true;
+    setMore(true);
+    setNotice("");
+    const version = generation.current;
     try {
-      const page = await listNotifications({ userId: user.id, cursor: nextCursor });
+      const page = demo ? demoListInbox({ filter, cursor }) : await listInbox({ filter, cursor });
+      if (version !== generation.current) return;
+      loadedBoundary.current = {
+        scope: `${account}:${filter}`,
+        oldestId: page.items.at(-1)?.id ?? loadedBoundary.current.oldestId,
+      };
       setItems((current) => {
         const known = new Set(current.map((item) => item.id));
         return [...current, ...page.items.filter((item) => !known.has(item.id))];
       });
-      setNextCursor(page.nextCursor);
+      setCursor(page.nextCursor);
     } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : "이전 알림을 불러오지 못했어요.");
+      if (version === generation.current)
+        setNotice(cause instanceof Error ? cause.message : "이전 소식을 불러오지 못했어요");
     } finally {
-      setLoadingMore(false);
-    }
-  }
-
-  async function markRead(id: number) {
-    if (!demo) {
-      try {
-        await markNotificationRead(id);
-      } catch (cause) {
-        setNotice(cause instanceof Error ? cause.message : "알림을 읽음 처리하지 못했어요.");
-        return;
+      if (version === generation.current) {
+        paging.current = false;
+        setMore(false);
       }
     }
-    setItems((current) =>
-      current.map((item) =>
-        item.id === id ? { ...item, read_at: new Date().toISOString() } : item,
-      ),
-    );
-    if (!demo) window.dispatchEvent(new Event("lemon:notifications-changed"));
   }
-
-  async function enablePush() {
-    if (!user || demo) {
-      setNotice("미리보기에서는 휴대폰 알림을 설정하지 않아요.");
+  async function readAll() {
+    if (readLock.current) return;
+    readLock.current = true;
+    setReading(true);
+    setNotice("");
+    const version = generation.current;
+    try {
+      const head = demo
+        ? demoListInbox({ filter: "all", limit: 1 })
+        : await listInbox({ filter: "all", limit: 1 });
+      if (version !== generation.current) return;
+      const throughId = head.items[0]?.id;
+      if (throughId) {
+        if (demo) demoMarkAllInboxRead(throughId);
+        else await markAllInboxRead({ throughId });
+        if (version === generation.current) {
+          showFeedback({ kind: "success", title: "소식을 모두 읽음으로 표시했어요" });
+          window.dispatchEvent(new Event("lemon:notifications-changed"));
+        }
+      } else if (version === generation.current) await load();
+    } catch (cause) {
+      if (version === generation.current)
+        setNotice(cause instanceof Error ? cause.message : "읽음 처리를 완료하지 못했어요");
+    } finally {
+      readLock.current = false;
+      setReading(false);
+    }
+  }
+  function open(item: InboxItem) {
+    setNotice("");
+    if (item.availability !== "available" || !item.target) {
+      setNotice("지금은 이 소식을 확인할 수 없어요");
       return;
     }
-    try {
-      const result = await registerPushToken(user.id);
-      setNotice(
-        result.active
-          ? "이 기기에서 친구 완료 알림을 받을 수 있어요."
-          : "앱에서 알림 권한을 허용하면 받을 수 있어요.",
-      );
-    } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : "휴대폰 알림을 설정하지 못했어요.");
+    if (
+      item.type === "encouragement_received" &&
+      (item.occurrenceId || item.dailyEncouragementId)
+    ) {
+      setResolved(false);
+      setSelected(item);
+    } else {
+      const separator = item.target.includes("?") ? "&" : "?";
+      router.push(`${item.target}${separator}notification=${item.id}`);
     }
   }
-
-  async function readAll() {
-    if (!demo && user) {
-      try {
-        await markAllNotificationsRead(user.id);
-      } catch (cause) {
-        setNotice(cause instanceof Error ? cause.message : "알림을 읽음 처리하지 못했어요.");
-        return;
+  const onResolved = useCallback(
+    (detail: OccurrenceDetail) => {
+      if (!selected || detail.occurrence.id !== selected.occurrenceId) return;
+      const exists =
+        !selected.encouragementId ||
+        detail.encouragements.some((row) => row.id === selected.encouragementId);
+      setResolved(exists);
+      if (!exists) {
+        setSelected(null);
+        setNotice("이 응원은 더 이상 확인할 수 없어요");
+        void load();
       }
-    }
-    setItems((current) =>
-      current.map((item) => ({ ...item, read_at: item.read_at ?? new Date().toISOString() })),
-    );
-    if (!demo) window.dispatchEvent(new Event("lemon:notifications-changed"));
-  }
-
-  async function open(item: NotificationItem) {
-    if (!item.read_at) await markRead(item.id);
-    router.push(notificationTarget(item));
-  }
-
+    },
+    [selected, load],
+  );
+  const visible = loadedScope === `${account}:${filter}` ? items : [];
   return (
-    <AppShell notificationCount={demo ? items.filter((item) => !item.read_at).length : undefined}>
+    <AppShell>
+      <FeedbackToast feedback={feedback} onDismiss={dismissFeedback} />
       <PageHeading
-        eyebrow="NEWS"
-        title="알림"
-        description="친구의 완료와 받은 응원을 모아봐요."
+        title="소식"
         action={
-          <Button size="sm" variant="secondary" onClick={() => void enablePush()}>
-            <Smartphone size={16} aria-hidden="true" /> 휴대폰 알림 켜기
+          <Button size="sm" variant="ghost" loading={reading} onClick={() => void readAll()}>
+            모두 읽음
           </Button>
         }
       />
+      <div className={styles.filters} role="group" aria-label="소식 종류">
+        {filters.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            id={`inbox-filter-${item.key}`}
+            aria-pressed={filter === item.key}
+            onClick={() => setFilter(item.key)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
       {notice ? (
         <p className="inline-alert" role="status">
           {notice}
         </p>
       ) : null}
-      {items.some((item) => !item.read_at) ? (
-        <div className="notification-toolbar">
-          <Button size="sm" variant="ghost" onClick={() => void readAll()}>
-            모두 읽음
-          </Button>
-        </div>
-      ) : null}
-      {items.length === 0 ? (
+      {loading ? (
+        <StatePanel kind="loading" title="소식을 불러오는 중" />
+      ) : error ? (
         <StatePanel
-          kind="empty"
-          title="아직 새 알림이 없어요"
-          description="친구가 할 일을 완료하거나 응원을 보내면 여기에 나타나요."
+          kind="error"
+          title="소식을 불러오지 못했어요"
+          description={error}
           action={
             <Button variant="secondary" onClick={() => void load()}>
-              새로 확인하기
+              다시 시도
             </Button>
           }
         />
+      ) : visible.length === 0 ? (
+        <StatePanel
+          kind="empty"
+          title={
+            filter === "encouragement"
+              ? "받은 응원이 없어요"
+              : filter === "connection"
+                ? "연결 소식이 없어요"
+                : "아직 소식이 없어요"
+          }
+        />
       ) : (
-        <section className="notification-list" aria-label="알림 목록">
-          {items.map((item) => (
-            <Card key={item.id} className={`notification-card ${item.read_at ? "is-read" : ""}`}>
-              <div className="notification-card__icon">
-                {item.notification_type === "encouragement_received" ? (
-                  <Citrus size={18} />
-                ) : item.notification_type === "task_completed" ? (
-                  <Check size={18} />
+        <section className={styles.list} aria-label="소식 목록">
+          {visible.map((item) => (
+            <button
+              type="button"
+              className={`${styles.row} ${item.readAt ? styles.read : ""}`}
+              key={item.id}
+              id={`inbox-item-${item.id}`}
+              onClick={() => open(item)}
+            >
+              <span className={styles.icon} aria-hidden="true">
+                <ProfileAvatar avatarKey={item.actorAvatarKey} size={32} />
+              </span>
+              <span className={styles.body}>
+                <span className={styles.label}>
+                  {item.actorName}
+                  <span>
+                    {item.type === "encouragement_received"
+                      ? "의 응원"
+                      : item.type === "connection_request"
+                        ? "의 연결 요청"
+                        : "님과 연결됐어요"}
+                  </span>
+                </span>
+                {item.availability === "unavailable" ? (
+                  <span className={styles.unavailable}>지금은 확인할 수 없는 소식</span>
                 ) : (
-                  <Bell size={18} />
+                  <>
+                    {item.taskTitle ? (
+                      <strong className={styles.title}>{item.taskTitle}</strong>
+                    ) : null}
+                    {item.reaction ? <ReactionImage reaction={item.reaction} /> : null}
+                    {item.messagePreview ? (
+                      <span className={styles.preview}>{item.messagePreview}</span>
+                    ) : null}
+                    {item.type === "connection_request" ? (
+                      <span className={styles.preview}>요청 확인하기</span>
+                    ) : null}
+                  </>
                 )}
-              </div>
-              <button
-                className="notification-card__body"
-                type="button"
-                onClick={() => void open(item)}
-              >
-                <strong>{notificationCopy(item)}</strong>
-                <span>
-                  {new Date(item.created_at).toLocaleString("ko-KR", {
-                    month: "short",
+                <time dateTime={item.createdAt}>
+                  {new Date(item.createdAt).toLocaleString("ko-KR", {
+                    month: "numeric",
                     day: "numeric",
                     hour: "numeric",
                     minute: "2-digit",
-                    timeZone: demo ? "Asia/Seoul" : undefined,
                   })}
-                </span>
-              </button>
-              {!item.read_at ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  aria-label="읽음 처리"
-                  onClick={() => void markRead(item.id)}
-                >
-                  <Sparkles size={15} />
-                </Button>
-              ) : (
-                <span className="notification-read">
-                  <Check size={14} /> 읽음
-                </span>
-              )}
-            </Card>
+                </time>
+              </span>
+              <span className={styles.tail}>
+                {!item.readAt ? <span className={styles.dot} aria-label="읽지 않음" /> : null}
+                <ArrowUpRight size={16} aria-hidden="true" />
+              </span>
+            </button>
           ))}
-          {nextCursor !== null ? (
-            <Button variant="secondary" loading={loadingMore} onClick={() => void loadMore()}>
-              이전 알림 더 보기
+          {cursor !== null ? (
+            <Button variant="secondary" loading={more} onClick={() => void loadMore()}>
+              이전 소식 더 보기
             </Button>
           ) : null}
         </section>
       )}
+      {selected?.dailyEncouragementId ? (
+        <DailyEncouragementPanel
+          key={selected.dailyEncouragementId}
+          id={selected.dailyEncouragementId}
+          notificationId={selected.readAt ? null : selected.id}
+          onClose={() => {
+            returnFocusId.current = selected.id;
+            setSelected(null);
+            setResolved(false);
+          }}
+        />
+      ) : selected ? (
+        <>
+          <OccurrenceDetailPanel
+            notice={
+              <InboxReadReceipt
+                notificationId={selected.readAt ? null : selected.id}
+                target={{
+                  kind: "occurrence",
+                  id: String(selected.occurrenceId),
+                  encouragementId: selected.encouragementId,
+                }}
+                resolved={resolved}
+              />
+            }
+            occurrenceId={selected.occurrenceId}
+            encouragementId={selected.encouragementId}
+            onClose={() => {
+              returnFocusId.current = selected.id;
+              setSelected(null);
+              setResolved(false);
+            }}
+            onChanged={() => void load(false)}
+            onResolved={onResolved}
+          />
+        </>
+      ) : null}
     </AppShell>
   );
 }

@@ -123,9 +123,8 @@ async function apnsProviderToken(): Promise<string> {
   return value;
 }
 
-async function sendToDevice(device: Device, target: string): Promise<SendResult> {
+async function sendToDevice(device: Device, target: string, body: string): Promise<SendResult> {
   const title = "레몬스케줄";
-  const body = "친구가 할 일을 완료했어요! 🍋";
   if (device.platform === "android") {
     const response = await fetch(
       "https://fcm.googleapis.com/v1/projects/" +
@@ -190,7 +189,7 @@ edgeRuntime.Deno.serve(async (request) => {
       table?: string;
       record?: { id?: number };
     };
-    notificationId = Number(event.record?.id);
+    notificationId = event.record?.id as number;
     if (
       event.type !== "INSERT" ||
       event.table !== "notifications" ||
@@ -213,58 +212,130 @@ edgeRuntime.Deno.serve(async (request) => {
     );
     const { data: notification, error: notificationError } = await admin
       .from("notifications")
-      .select("id, recipient_id, actor_id, occurrence_id, notification_type")
+      .select(
+        "id, recipient_id, actor_id, occurrence_id, encouragement_id, daily_encouragement_id, connection_request_id, notification_type",
+      )
       .eq("id", notificationId)
       .maybeSingle();
     if (notificationError) throw new Error("NOTIFICATION_QUERY");
     if (
       !notification ||
-      notification.notification_type !== "task_completed" ||
-      !notification.actor_id ||
-      !notification.occurrence_id
+      !["connection_request", "connection_accepted", "encouragement_received"].includes(
+        notification.notification_type,
+      )
     ) {
-      return json({ skipped: "NOT_COMPLETION" });
+      return json({ skipped: "DIRECT_NOTIFICATION_ONLY" });
+    }
+    if (!notification.actor_id || notification.actor_id === notification.recipient_id) {
+      return json({ skipped: "ACTOR_UNAVAILABLE" });
     }
 
     const [low, high] = [notification.actor_id, notification.recipient_id].sort();
-    const [{ data: connection, error: connectionError }, { data: blocks, error: blocksError }] =
-      await Promise.all([
-        admin
-          .from("connections")
-          .select("user_low_id")
-          .eq("user_low_id", low)
-          .eq("user_high_id", high)
-          .maybeSingle(),
-        admin
-          .from("blocks")
-          .select("blocker_id")
-          .in("blocker_id", [low, high])
-          .in("blocked_id", [low, high]),
-      ]);
-    if (connectionError || blocksError) throw new Error("CONNECTION_QUERY");
-    if (!connection || (blocks?.length ?? 0) > 0) return json({ skipped: "NOT_CONNECTED" });
-
-    const { data: occurrence, error: occurrenceError } = await admin
-      .from("task_occurrences")
-      .select("id, task_id, owner_id, status")
-      .eq("id", notification.occurrence_id)
+    const { data: connection, error: connectionError } = await admin
+      .from("connections")
+      .select("user_low_id")
+      .eq("user_low_id", low)
+      .eq("user_high_id", high)
       .maybeSingle();
-    if (occurrenceError) throw new Error("OCCURRENCE_QUERY");
-    if (
-      !occurrence ||
-      occurrence.owner_id !== notification.actor_id ||
-      occurrence.status !== "completed"
-    ) {
-      return json({ skipped: "NOT_COMPLETED" });
+    if (connectionError) throw new Error("CONNECTION_QUERY");
+    if (notification.notification_type !== "connection_request" && !connection) {
+      return json({ skipped: "NOT_CONNECTED" });
     }
-    const { data: task, error: taskError } = await admin
-      .from("tasks")
-      .select("id")
-      .eq("id", occurrence.task_id)
-      .is("deleted_at", null)
-      .maybeSingle();
-    if (taskError) throw new Error("TASK_QUERY");
-    if (!task) return json({ skipped: "TASK_DELETED" });
+
+    let target: string;
+    let body: string;
+    if (
+      notification.notification_type === "connection_request" ||
+      notification.notification_type === "connection_accepted"
+    ) {
+      if (!notification.connection_request_id) return json({ skipped: "REQUEST_UNAVAILABLE" });
+      const { data: connectionRequest, error } = await admin
+        .from("connection_requests")
+        .select("requester_id, addressee_id, status")
+        .eq("id", notification.connection_request_id)
+        .maybeSingle();
+      if (error) throw new Error("REQUEST_QUERY");
+      const incoming = notification.notification_type === "connection_request";
+      if (
+        !connectionRequest ||
+        connectionRequest.requester_id !==
+          (incoming ? notification.actor_id : notification.recipient_id) ||
+        connectionRequest.addressee_id !==
+          (incoming ? notification.recipient_id : notification.actor_id) ||
+        connectionRequest.status !== (incoming ? "pending" : "accepted")
+      ) {
+        return json({ skipped: "REQUEST_UNAVAILABLE" });
+      }
+      target = incoming
+        ? "/friends/?request=" + notification.connection_request_id
+        : "/friends/?friend=" + encodeURIComponent(notification.actor_id);
+      body = incoming ? "새 친구 요청이 있어요" : "친구 요청이 수락됐어요";
+    } else if (notification.daily_encouragement_id) {
+      const { data: encouragement, error } = await admin
+        .from("daily_encouragements")
+        .select("author_id, owner_id, visibility")
+        .eq("id", notification.daily_encouragement_id)
+        .maybeSingle();
+      if (error) throw new Error("ENCOURAGEMENT_QUERY");
+      if (
+        !encouragement ||
+        encouragement.author_id !== notification.actor_id ||
+        encouragement.owner_id !== notification.recipient_id ||
+        encouragement.visibility !== "visible"
+      ) {
+        return json({ skipped: "ENCOURAGEMENT_UNAVAILABLE" });
+      }
+      target = "/?dailyEncouragement=" + notification.daily_encouragement_id;
+      body = "새 응원이 도착했어요";
+    } else {
+      if (!notification.encouragement_id || !notification.occurrence_id) {
+        return json({ skipped: "ENCOURAGEMENT_UNAVAILABLE" });
+      }
+      const { data: encouragement, error: encouragementError } = await admin
+        .from("encouragements")
+        .select("occurrence_id, author_id, owner_id, visibility")
+        .eq("id", notification.encouragement_id)
+        .maybeSingle();
+      if (encouragementError) throw new Error("ENCOURAGEMENT_QUERY");
+      if (
+        !encouragement ||
+        encouragement.occurrence_id !== notification.occurrence_id ||
+        encouragement.author_id !== notification.actor_id ||
+        encouragement.owner_id !== notification.recipient_id ||
+        encouragement.visibility !== "visible"
+      ) {
+        return json({ skipped: "ENCOURAGEMENT_UNAVAILABLE" });
+      }
+      const { data: occurrence, error: occurrenceError } = await admin
+        .from("task_occurrences")
+        .select("id, task_id, owner_id, status")
+        .eq("id", notification.occurrence_id)
+        .maybeSingle();
+      if (occurrenceError) throw new Error("OCCURRENCE_QUERY");
+      if (
+        !occurrence ||
+        occurrence.owner_id !== notification.recipient_id ||
+        occurrence.status !== "completed"
+      ) {
+        return json({ skipped: "NOT_COMPLETED" });
+      }
+      const { data: task, error: taskError } = await admin
+        .from("tasks")
+        .select("id")
+        .eq("id", occurrence.task_id)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (taskError) throw new Error("TASK_QUERY");
+      if (!task) return json({ skipped: "TASK_DELETED" });
+      target =
+        "/?occurrence=" +
+        notification.occurrence_id +
+        "&encouragement=" +
+        notification.encouragement_id;
+      body = "새 응원이 도착했어요";
+    }
+
+    target += (target.includes("?") ? "&" : "?") + "notification=" + notificationId;
 
     const { data: devices, error: devicesError } = await admin
       .from("device_tokens")
@@ -272,11 +343,6 @@ edgeRuntime.Deno.serve(async (request) => {
       .eq("user_id", notification.recipient_id)
       .eq("active", true);
     if (devicesError) throw new Error("DEVICE_QUERY");
-    const target =
-      "/friends/?friend=" +
-      encodeURIComponent(notification.actor_id) +
-      "&occurrence=" +
-      notification.occurrence_id;
     let sent = 0;
     let failed = 0;
     let skipped = 0;
@@ -296,7 +362,7 @@ edgeRuntime.Deno.serve(async (request) => {
       }
       if (claimError || !claim) throw new Error("CLAIM_FAILED");
       try {
-        const result = await sendToDevice(device, target);
+        const result = await sendToDevice(device, target, body);
         const { error } = await admin
           .from("push_delivery_attempts")
           .update({
@@ -308,8 +374,11 @@ edgeRuntime.Deno.serve(async (request) => {
         if (error) throw new Error("STATUS_UPDATE_FAILED");
         sent += 1;
       } catch (cause) {
-        const errorCode = cause instanceof Error ? cause.message : "UNKNOWN_SEND_ERROR";
-        await admin
+        const errorCode =
+          cause instanceof Error && /^(?:FCM|APNS|MISSING|STATUS)_[A-Z0-9_]+$/.test(cause.message)
+            ? cause.message
+            : "PROVIDER_FAILED";
+        const { error: failedStatusError } = await admin
           .from("push_delivery_attempts")
           .update({
             status: "failed",
@@ -317,12 +386,16 @@ edgeRuntime.Deno.serve(async (request) => {
             finished_at: new Date().toISOString(),
           })
           .eq("id", claim.id);
+        if (failedStatusError) throw new Error("DELIVERY_STATUS_WRITE_FAILED");
         failed += 1;
       }
     }
     return json({ sent, failed, skipped });
   } catch (cause) {
-    console.error("push dispatch failed", cause instanceof Error ? cause.message : "UNKNOWN");
+    console.error(
+      "push dispatch failed",
+      cause instanceof Error && /^[A-Z_]+$/.test(cause.message) ? cause.message : "UNKNOWN",
+    );
     return json({ error: "DISPATCH_FAILED" }, 500);
   }
 });

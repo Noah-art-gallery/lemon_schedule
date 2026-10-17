@@ -1,0 +1,53 @@
+-- Run only after the upgrade setup fixture and the new migration on the same local DB.
+begin;
+create extension if not exists pgtap with schema extensions;
+select extensions.no_plan();
+select extensions.is((select visibility from public.encouragements where id = old.id),
+  case when old.visibility = 'hidden_by_owner' then 'visible' else old.visibility end,
+  'upgrade preserves ID and maps only owner-hidden visibility: ' || old.id)
+from upgrade_evidence.encouragements old;
+select extensions.is(
+ (select to_jsonb(current_row) - 'visibility' - 'updated_at' from public.encouragements current_row where current_row.id = old.id),
+ to_jsonb(old) - 'visibility', 'upgrade preserves encouragement content and ownership: ' || old.id)
+from upgrade_evidence.encouragements old;
+create function pg_temp.current_rows(table_name text) returns jsonb language plpgsql as $$
+declare result jsonb; begin
+ execute format('select coalesce(jsonb_agg(to_jsonb(t) order by to_jsonb(t)::text), ''[]''::jsonb) from public.%I t', table_name) into result;
+ return result;
+end $$;
+select extensions.is(pg_temp.current_rows(name), rows, 'upgrade leaves existing ' || name || ' unchanged') from upgrade_evidence.before_state order by name;
+select set_config('test.upgrade_hidden', (select id::text from public.task_occurrences where title_snapshot = 'Upgrade hidden'), true);
+select set_config('test.upgrade_deleted', (select id::text from public.task_occurrences where title_snapshot = 'Upgrade deleted'), true);
+select set_config('test.upgrade_deleted_cheer', (select id::text from public.encouragements where visibility = 'deleted_by_author'), true);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+select extensions.is(to_regprocedure('public.block_user(uuid)'), null::regprocedure, 'authenticated caller has no block RPC');
+select extensions.is(to_regprocedure('public.unblock_user(uuid)'), null::regprocedure, 'authenticated caller has no unblock RPC');
+select extensions.is(to_regprocedure('public.hide_encouragement(bigint,boolean)'), null::regprocedure, 'authenticated caller has no hide RPC');
+select extensions.is((select count(*)::integer from public.connections), 0, 'formerly blocked pair is not automatically connected');
+select extensions.is((select count(*)::integer from public.tasks), 0, 'formerly blocked nonfriend cannot read tasks');
+select extensions.is((select count(*)::integer from public.encouragements), 0, 'formerly blocked author cannot read old encouragements');
+select extensions.is((select count(*)::integer from public.profile_private where user_id <> auth.uid()), 0, 'nonfriend cannot read private profiles');
+select extensions.is((select count(*)::integer from public.pets where user_id <> auth.uid()), 0, 'nonfriend cannot read pet originals');
+select extensions.is((select count(*)::integer from public.device_tokens where user_id <> auth.uid()), 0, 'nonfriend cannot read device tokens');
+select extensions.throws_ok($$select public.upsert_encouragement(current_setting('test.upgrade_hidden')::bigint,'lemon','forbidden')$$, 'P0001', 'ENCOURAGEMENT_NOT_ALLOWED', 'former author cannot encourage before approval');
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+select extensions.is((public.get_occurrence_detail(current_setting('test.upgrade_hidden')::bigint)#>>'{summary,count}')::integer, 1, 'owner retains restored historical encouragement after disconnect');
+select extensions.is((public.get_occurrence_detail(current_setting('test.upgrade_deleted')::bigint)#>>'{summary,count}')::integer, 0, 'deleted encouragement is not restored');
+select extensions.lives_ok($$select public.request_connection('UPGRADE002')$$, 'formerly blocked pair may send a fresh approval request');
+select extensions.is((select count(*)::integer from public.connections), 0, 'request alone does not reconnect');
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+select extensions.is((select count(*)::integer from public.tasks), 0, 'pending request cannot read private tasks');
+select extensions.lives_ok($$select public.respond_connection_request((select id from public.connection_requests where status = 'pending'),true)$$, 'recipient explicitly accepts the fresh request');
+select extensions.is((select count(*)::integer from public.connections), 1, 'only approval reconnects');
+select extensions.is((public.get_occurrence_detail(current_setting('test.upgrade_deleted')::bigint)#>>'{summary,count}')::integer, 0, 'reconnection does not restore author-deleted encouragement');
+select extensions.is(public.upsert_encouragement(current_setting('test.upgrade_deleted')::bigint,'clap','Rewritten'),current_setting('test.upgrade_deleted_cheer')::bigint,'explicit rewriting retains original encouragement ID');
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+select extensions.is((public.get_occurrence_detail(current_setting('test.upgrade_deleted')::bigint)#>>'{summary,count}')::integer,1,'explicit rewriting restores one encouragement');
+select extensions.is((select count(*)::integer from public.notifications where notification_type = 'encouragement_received'),2,'rewriting does not regenerate encouragement notifications');
+select public.reopen_occurrence(current_setting('test.upgrade_hidden')::bigint);
+select extensions.is((public.complete_occurrence(current_setting('test.upgrade_hidden')::bigint)->>'rewardGranted')::boolean,false,'recompletion after upgrade grants no duplicate reward');
+select extensions.is((select lemon_points from public.profile_private where user_id = auth.uid()),2::bigint,'upgrade and recompletion preserve points');
+select extensions.is((select count(*)::integer from public.completion_events),2,'upgrade and recompletion preserve original completion events');
+select * from extensions.finish();
+rollback;

@@ -1,0 +1,391 @@
+.card {
+  padding: 20px 0 16px;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.card:first-child {
+  padding-top: 4px;
+}
+.compact {
+  border: 0;
+  padding: 8px 0 16px;
+}
+.identityRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  min-height: 48px;
+  background: none;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+}
+.header > span {
+  min-width: 0;
+}
+.header strong {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.header time,
+.recipient time {
+  display: block;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.header > svg:last-child {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.completion {
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+.completion b {
+  font-size: 16px;
+  color: var(--leaf-600);
+  font-weight: 700;
+}
+.tasks {
+  margin: 10px 0 0 46px;
+}
+.task {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  width: 100%;
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+  cursor: pointer;
+}
+.task > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.done,
+.pending {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  flex-shrink: 0;
+}
+.done {
+  background: var(--leaf-600);
+  border-radius: 6px;
+  color: white;
+}
+.pending {
+  color: #a2a79b;
+}
+.empty,
+.date {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 10px 0;
+}
+.more {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  padding: 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+.cardFooter {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+.sendEntry {
+  font-size: 13px;
+  font-weight: 600;
+  min-height: 44px;
+  padding: 8px 10px;
+  gap: 6px;
+  color: var(--muted);
+}
+.saved {
+  margin: 8px 0 0 46px;
+  padding: 10px 12px 12px;
+  background: var(--lemon-50);
+  border-radius: 12px;
+}
+.compact .saved {
+  margin-left: 0;
+}
+.savedTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: -6px;
+}
+.saved h3 {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--leaf-600);
+  font-weight: 600;
+}
+.edit {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 6px;
+  min-height: 44px;
+}
+.content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.content > svg {
+  width: 40px;
+  height: 40px;
+}
+.content > div {
+  min-width: 0;
+}
+.content p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.quote {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.quote::before {
+  content: "“";
+  margin-right: 3px;
+}
+.quote::after {
+  content: "”";
+  margin-left: 3px;
+}
+.form {
+  display: grid;
+  gap: 20px;
+}
+.recipient {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.recipient > div {
+  min-width: 0;
+}
+.recipient strong {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.recipient strong > span {
+  margin-left: 3px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 400;
+}
+.reactions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.reactions button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 88px;
+  padding: 10px 2px 8px;
+  border: 2px solid transparent;
+  border-radius: 14px;
+  background: #f5f6f2;
+  color: var(--muted);
+  cursor: pointer;
+}
+.reactions button[aria-pressed="true"] {
+  border-color: var(--lemon-700);
+  background: var(--lemon-50);
+  color: var(--ink);
+}
+.reactions button > svg[data-sprite] {
+  width: 48px;
+  height: 48px;
+}
+.reactions button > span {
+  font-size: 12px;
+  font-weight: 600;
+}
+.check {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: white;
+  padding: 2px;
+}
+.note {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--surface);
+}
+.note:focus-within {
+  border-color: var(--lemon-700);
+}
+.note textarea {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  min-height: 72px;
+  resize: vertical;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+.note textarea::placeholder {
+  color: var(--muted);
+  font-size: 14px;
+}
+.count {
+  display: block;
+  text-align: right;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.quoteControl {
+  margin-top: -10px;
+}
+.quoteToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.quoteToggle > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.quoteToggle[aria-expanded="true"] > svg:last-child {
+  transform: rotate(90deg);
+}
+.quoteSelect select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  font: inherit;
+  font-size: 16px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.quoteChip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: var(--lemon-50);
+  font-size: 13px;
+}
+.quoteChip > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.quoteChip button {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  background: none;
+}
+.footer {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+}
+.footer > button:last-child {
+  flex: 1;
+}
+.remove {
+  flex-shrink: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+.error {
+  color: var(--danger);
+  font-size: 14px;
+}
+.composerPanel :global(.panel__header) {
+  padding-bottom: 16px;
+}
+.composerPanel :global(.panel__header h2) {
+  font-size: 19px;
+}
+@media (min-width: 760px) {
+  .card {
+    padding: 24px 8px 16px;
+  }
+}
+
+.received {
+  margin-top: 16px;
+  padding: 18px;
+  border-radius: 14px;
+  background: var(--lemon-50);
+}
+.received .content > svg {
+  width: 56px;
+  height: 56px;
+}

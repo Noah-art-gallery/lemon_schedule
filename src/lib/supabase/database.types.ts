@@ -4,6 +4,7 @@ import type {
   NotificationType,
   OccurrenceStatus,
   Platform,
+  ProfileAvatarKey,
   Reaction,
   Recurrence,
 } from "@/types/contracts";
@@ -20,6 +21,7 @@ type DbTable<Row, Insert = Partial<Row>, Update = Partial<Insert>> = {
 export interface ProfileRow {
   id: string;
   display_name: string;
+  avatar_key: ProfileAvatarKey;
   created_at: string;
   updated_at: string;
 }
@@ -102,6 +104,7 @@ export interface NotificationRow {
   occurrence_id: number | null;
   connection_request_id: number | null;
   encouragement_id: number | null;
+  daily_encouragement_id?: number | null;
   event_key: string;
   read_at: string | null;
   created_at: string;
@@ -131,11 +134,6 @@ export type Database = {
       >;
       connection_requests: DbTable<ConnectionRequestRow>;
       connections: DbTable<ConnectionRow>;
-      blocks: DbTable<{
-        blocker_id: string;
-        blocked_id: string;
-        created_at: string;
-      }>;
       completion_events: DbTable<{
         id: number;
         occurrence_id: number;
@@ -144,6 +142,18 @@ export type Database = {
         completed_at: string;
       }>;
       encouragements: DbTable<EncouragementRow>;
+      daily_encouragements: DbTable<{
+        id: number;
+        owner_id: string;
+        author_id: string;
+        day: string;
+        reaction: Reaction;
+        message: string | null;
+        quoted_occurrence_id: number | null;
+        visibility: EncouragementVisibility;
+        created_at: string;
+        updated_at: string;
+      }>;
       notifications: DbTable<NotificationRow>;
       pets: DbTable<{
         user_id: string;
@@ -183,6 +193,44 @@ export type Database = {
       };
     };
     Functions: {
+      get_encouragement_day: { Args: { target_owner_id: string }; Returns: Json };
+      get_daily_encouragement: { Args: { target_encouragement_id: number }; Returns: Json };
+      upsert_daily_encouragement: {
+        Args: {
+          target_owner_id: string;
+          expected_day: string;
+          selected_reaction: Reaction;
+          selected_message: string | null;
+          target_occurrence_id: number | null;
+        };
+        Returns: Json;
+      };
+      delete_daily_encouragement: { Args: { target_encouragement_id: number }; Returns: boolean };
+      list_social_activity: {
+        Args: {
+          target_friend_id: string | null;
+          cursor_completed_at: string | null;
+          cursor_occurrence_id: number | null;
+          page_limit: number;
+        };
+        Returns: Json;
+      };
+      list_own_history: {
+        Args: {
+          cursor_completed_at: string | null;
+          cursor_occurrence_id: number | null;
+          page_limit: number;
+        };
+        Returns: Json;
+      };
+      get_occurrence_detail: { Args: { target_occurrence_id: number }; Returns: Json };
+      list_encouragement_summaries: { Args: { occurrence_ids: number[] }; Returns: Json };
+      list_inbox: {
+        Args: { inbox_filter: string; cursor_id: number | null; page_limit: number };
+        Returns: Json;
+      };
+      get_inbox_unread_count: { Args: Record<string, never>; Returns: Json };
+      mark_all_inbox_read: { Args: { through_id: number }; Returns: Json };
       set_pet_decorations: {
         Args: {
           target_color: "leaf-green" | "lemon-yellow";
@@ -193,12 +241,12 @@ export type Database = {
       };
       request_connection: { Args: { target_invite_code: string }; Returns: number };
       update_my_profile: {
-        Args: { new_display_name: string | null; new_time_zone: string | null };
+        Args: {
+          new_display_name: string | null;
+          new_time_zone: string | null;
+          new_avatar_key?: ProfileAvatarKey | null;
+        };
         Returns: Json;
-      };
-      list_blocked_profiles: {
-        Args: Record<string, never>;
-        Returns: Array<{ user_id: string; display_name: string; blocked_at: string }>;
       };
       respond_connection_request: {
         Args: { target_request_id: number; accept_request: boolean };
@@ -209,8 +257,6 @@ export type Database = {
         Returns: boolean;
       };
       disconnect_friend: { Args: { friend_id: string }; Returns: boolean };
-      block_user: { Args: { target_user_id: string }; Returns: boolean };
-      unblock_user: { Args: { target_user_id: string }; Returns: boolean };
       delete_task: { Args: { target_task_id: number }; Returns: boolean };
       update_task_schedule: {
         Args: {
@@ -252,10 +298,6 @@ export type Database = {
           selected_message: string | null;
         };
         Returns: number;
-      };
-      hide_encouragement: {
-        Args: { target_encouragement_id: number; hidden: boolean };
-        Returns: boolean;
       };
       delete_encouragement: {
         Args: { target_encouragement_id: number };

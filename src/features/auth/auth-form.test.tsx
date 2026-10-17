@@ -50,4 +50,29 @@ describe("인증된 계정의 로그인 진입", () => {
       "휴대폰 알림 등록을 해제하지 못했어요.",
     );
   });
+
+  it("로그인 실패 뒤 입력을 보존하고 중복 전송을 막는다", async () => {
+    authState.status = "unauthenticated";
+    disableNativePush.mockResolvedValue(undefined);
+    let reject!: (error: AppError) => void;
+    signIn.mockReturnValue(
+      new Promise((_, fail) => {
+        reject = fail;
+      }),
+    );
+    render(<AuthForm mode="login" />);
+    const email = screen.getByRole("textbox", { name: "이메일" });
+    const password = screen.getByLabelText("비밀번호");
+    fireEvent.change(email, { target: { value: "friend@example.com" } });
+    fireEvent.change(password, { target: { value: "password123" } });
+    const submit = screen.getByRole("button", { name: "로그인" });
+    fireEvent.click(submit);
+    fireEvent.submit(submit.closest("form")!);
+    await waitFor(() => expect(signIn).toHaveBeenCalledOnce());
+    reject(new AppError("INVALID_INPUT", "로그인 실패"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("로그인 실패");
+    expect(email).toHaveValue("friend@example.com");
+    expect(password).toHaveValue("password123");
+    expect(replace).not.toHaveBeenCalled();
+  });
 });
