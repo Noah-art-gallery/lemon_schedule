@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "레몬스케줄",
-  description: "할 일을 기록하고 친구와 완료 소식을 나누는 투두",
+  description: "친구·가족과 서로 응원하고, 할 일을 하나씩 해내며 나만의 펫을 키워요.",
   applicationName: "레몬스케줄",
 };
 

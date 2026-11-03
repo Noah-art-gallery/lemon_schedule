@@ -77,7 +77,7 @@ export function TaskEditor({
           maxLength={80}
           required
           onChange={(event) => change({ title: event.target.value })}
-          placeholder="할 일을 입력하세요"
+          placeholder="어떤 일을 할까요?"
         />
       </label>
       <label className={styles.label}>
@@ -132,8 +132,7 @@ export function TaskEditor({
       </div>
       {editing && initial.recurrence !== "none" ? (
         <p className={styles.status}>
-          반복 일정 전체를 수정합니다. 앞으로 할 일정에 적용되며, 이미 완료한 기록과 포인트는
-          유지됩니다.
+          바뀐 내용은 앞으로의 반복 일정에 모두 적용돼요. 이미 완료한 기록과 포인트는 그대로 남아요.
         </p>
       ) : null}
       {error ? (
@@ -146,7 +145,7 @@ export function TaskEditor({
           취소
         </Button>
         <Button type="submit" loading={saving}>
-          {editing ? "변경 저장" : "할 일 추가"}
+          {editing ? "수정 완료" : "할 일 추가"}
         </Button>
       </div>
     </form>

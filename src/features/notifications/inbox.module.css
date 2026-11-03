@@ -1,10 +1,12 @@
 .filters {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   border-bottom: 1px solid var(--line);
   margin-bottom: 8px;
 }
 .filters button {
+  white-space: nowrap;
   border-radius: 0;
   min-height: 44px;
   min-width: 64px;

@@ -247,3 +247,25 @@
     flex-wrap: wrap;
   }
 }
+.listingTabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: #f0f1eb;
+  border-radius: 14px;
+  margin-bottom: 20px;
+}
+.listingTabs button {
+  flex: 1;
+  min-height: 48px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+}
+.listingTabs button[aria-selected="true"] {
+  background: var(--lemon-100);
+  color: var(--ink);
+  font-weight: 700;
+}

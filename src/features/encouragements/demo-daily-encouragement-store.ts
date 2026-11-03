@@ -53,7 +53,7 @@ export function demoGetDailyEncouragement(id: number): DailyEncouragement {
 export function demoGetEncouragementDay(ownerId: string): EncouragementDay {
   seed();
   const owner = friend(ownerId);
-  if (!owner) throw new AppError("FORBIDDEN", "연결이 해제되어 오늘을 볼 수 없어요");
+  if (!owner) throw new AppError("FORBIDDEN", "친구 관계가 해제되어 오늘의 할 일을 볼 수 없어요");
   const day = toDateKey(new Date(), "Asia/Seoul");
   const row = [...records.values()].find(
     (item) =>

@@ -18,7 +18,11 @@ import type { TaskOccurrenceRow } from "@/lib/supabase/database.types";
 import { recurrenceValues, type TodaySummary } from "@/types/contracts";
 
 export const taskInputSchema = z.object({
-  title: z.string().trim().min(1, "할 일을 입력해 주세요.").max(80),
+  title: z
+    .string()
+    .trim()
+    .min(1, "할 일을 입력해 주세요.")
+    .max(80, "할 일은 80자 이하로 입력해 주세요."),
   dueDate: z.iso.date("올바른 날짜를 선택해 주세요."),
   dueTime: z.union([z.iso.time({ precision: -1 }), z.literal("")]).optional(),
   recurrence: z.enum(recurrenceValues).default("none"),

@@ -68,7 +68,10 @@ export async function saveDailyEncouragement(
     target_occurrence_id: value.quotedOccurrenceId,
   });
   if (error?.message.includes("CONFLICT"))
-    throw new AppError("CONFLICT", "친구의 날짜가 바뀌었어요. 오늘을 다시 불러와 주세요");
+    throw new AppError(
+      "CONFLICT",
+      "친구에게 새로운 하루가 시작됐어요. 오늘의 할 일을 다시 불러와 주세요",
+    );
   if (error?.message.includes("INVALID_QUOTE"))
     throw new AppError("INVALID_INPUT", "인용한 할 일을 다시 확인해 주세요");
   readError(error);

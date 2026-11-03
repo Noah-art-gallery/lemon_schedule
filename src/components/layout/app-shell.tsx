@@ -54,7 +54,7 @@ export function AppShell({ children, notificationCount }: AppShellProps) {
       </aside>
       <div className="app-shell__body">
         <TopBar notificationCount={notificationCount ?? unreadCount} />
-        {demo ? <p className="demo-banner">미리보기 · 실제 저장 안 됨</p> : null}
+        {demo ? <p className="demo-banner">미리보기 · 새로고침하면 초기화돼요</p> : null}
         <main id="main-content" className="page-content" tabIndex={-1}>
           {children}
         </main>

@@ -41,6 +41,50 @@
         }
       },
       "updatedAt": "2026-10-10T06:28:11.208Z"
+    },
+    "friends-timeline": {
+      "targetKind": "new-ui",
+      "projectId": "83d5ffde-0209-44c7-b29f-6d547636a69d",
+      "activeDraftId": "f855d451-0514-44f7-8761-387345c3175f",
+      "designSystemPath": ".superdesign/design-system.md",
+      "contextFiles": [
+        ".superdesign/design-system.md",
+        "src/app/globals.css:1:65",
+        "src/components/layout/bottom-nav.tsx",
+        "src/components/ui/character-sprite.tsx",
+        "src/features/connections/friends-experience.module.css"
+      ],
+      "referenceIds": ["public-sprites-characters-v1"],
+      "brandAssets": {
+        "logo": {
+          "assetKey": "public-sprites-characters-v1",
+          "url": "https://vgbujcuwptvheqijyjbe.supabase.co/storage/v1/object/public/hmac-uploads/projects/83d5ffde-0209-44c7-b29f-6d547636a69d/brand-assets/public-sprites-characters-v1/characters-v1.png",
+          "sourcePath": "public/sprites/characters-v1.png"
+        }
+      },
+      "components": [
+        {
+          "name": "LemonTopBar",
+          "id": "ba1ba0d2-eee9-4b64-9d67-92964019ae3b",
+          "sourcePath": "src/components/layout/top-bar.tsx",
+          "logoAssetKey": "public-sprites-characters-v1"
+        }
+      ],
+      "fingerprints": {
+        ".superdesign/design-system.md": "c830311f451ed6659373a6a089448711dfbbe446d1f7b170f2ae30b96897a1b5",
+        "src/app/globals.css": "713ddfa6e2a921eabda3dbc721018f46be4143485c07d8bfee21d7632a69dbf8",
+        "src/components/layout/bottom-nav.tsx": "672e0b81672a16adab68ba9ce545e7f91245688e11f89c161219e7e27558256b",
+        "src/components/ui/character-sprite.tsx": "4582b09d6407611e46f289fdcfc56bb9106dce4a2947ba7eb9e5373e0bc8cc37",
+        "src/features/connections/friends-experience.module.css": "e0724ef9147e80ac38e69b2c412a0d95e58c22ca8b6f9afbf5431d63066d8632"
+      },
+      "drafts": {
+        "f855d451-0514-44f7-8761-387345c3175f": {
+          "title": "Lemon Schedule Friends Timeline",
+          "currentVersion": 3,
+          "visualDirection": "Interleaved registration/completion timeline plus friend day cards; original sprites and lemon theme"
+        }
+      },
+      "updatedAt": "2026-10-24T08:34:08.372Z"
     }
   }
 }

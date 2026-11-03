@@ -9,7 +9,9 @@ vi.mock("@/components/layout/app-shell", () => ({
 it("keeps the received encouragement visible and preserves the editing draft", async () => {
   Element.prototype.scrollIntoView = vi.fn();
   render(<NotificationScreen />);
-  fireEvent.click(await screen.findByRole("button", { name: /지민의 응원.*오늘도 잊지/ }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: /지민님이 응원을 보냈어요.*오늘도 잊지/ }),
+  );
   const dialog = await screen.findByRole("dialog");
   expect(within(dialog).queryByRole("button", { name: "숨기기" })).not.toBeInTheDocument();
   await within(dialog).findByText("오늘도 잊지 않고 했네!");
@@ -25,7 +27,9 @@ it("keeps the received encouragement visible and preserves the editing draft", a
 
 it("opens the exact received daily encouragement and marks it read", async () => {
   render(<NotificationScreen />);
-  fireEvent.click(await screen.findByRole("button", { name: /지민의 응원.*오늘도 네 속도/ }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: /지민님이 응원을 보냈어요.*오늘도 네 속도/ }),
+  );
   const panel = await screen.findByRole("dialog", { name: "받은 하루 응원" });
   await within(panel).findByText("오늘도 네 속도로 해보자");
   expect(within(panel).queryByRole("textbox")).not.toBeInTheDocument();

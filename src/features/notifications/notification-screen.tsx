@@ -20,8 +20,8 @@ import { InboxReadReceipt } from "./inbox-read-receipt";
 import styles from "./inbox.module.css";
 const filters: { key: InboxFilter; label: string }[] = [
   { key: "all", label: "전체" },
-  { key: "encouragement", label: "응원" },
-  { key: "connection", label: "연결" },
+  { key: "encouragement", label: "받은 응원" },
+  { key: "connection", label: "친구 소식" },
 ];
 export function NotificationScreen() {
   const { demo, user } = useAuth();
@@ -242,7 +242,7 @@ function NotificationContent() {
         title="소식"
         action={
           <Button size="sm" variant="ghost" loading={reading} onClick={() => void readAll()}>
-            모두 읽음
+            모두 읽음으로 표시
           </Button>
         }
       />
@@ -284,7 +284,7 @@ function NotificationContent() {
             filter === "encouragement"
               ? "받은 응원이 없어요"
               : filter === "connection"
-                ? "연결 소식이 없어요"
+                ? "아직 친구 요청이나 수락 소식이 없어요"
                 : "아직 소식이 없어요"
           }
         />
@@ -306,10 +306,10 @@ function NotificationContent() {
                   {item.actorName}
                   <span>
                     {item.type === "encouragement_received"
-                      ? "의 응원"
+                      ? "님이 응원을 보냈어요"
                       : item.type === "connection_request"
-                        ? "의 연결 요청"
-                        : "님과 연결됐어요"}
+                        ? "님이 친구 요청을 보냈어요"
+                        : "님과 친구가 됐어요"}
                   </span>
                 </span>
                 {item.availability === "unavailable" ? (

@@ -94,7 +94,7 @@ it("retains the draft on failure and clears it when the recipient day changes", 
     occurrences: [],
     mine: null,
   });
-  fireEvent.click(screen.getByRole("button", { name: "오늘 다시 불러오기" }));
+  fireEvent.click(screen.getByRole("button", { name: "오늘의 할 일 새로고침" }));
   await screen.findByText("새로운 하루로 바뀌었어요");
   expect(screen.queryByRole("form")).not.toBeInTheDocument();
 });

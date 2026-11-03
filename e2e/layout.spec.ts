@@ -47,6 +47,7 @@ test("버튼·캐릭터 선택·패널은 모바일과 확대 글자에서도 �
           .fill("긴 할 일 제목 ".repeat(10).slice(0, 80));
         await page.getByRole("button", { name: "시간·반복 펼치기" }).click();
       } else if (path === "/friends/") {
+        await page.getByRole("tab", { name: "친구별", exact: true }).click();
         await page
           .getByRole("article", { name: "지민의 하루" })
           .getByRole("button", { name: "응원 보내기" })

@@ -53,7 +53,7 @@ export async function getConnectionData(userId: string): Promise<ConnectionData>
     client.from("connections").select("*"),
   ]);
   if (requestsResult.error || connectionsResult.error) {
-    throw new AppError("INVALID_INPUT", "친구 연결을 불러오지 못했어요.");
+    throw new AppError("INVALID_INPUT", "친구 목록을 불러오지 못했어요.");
   }
   const requests = requestsResult.data;
   const connectionRows = connectionsResult.data as ConnectionRow[];
@@ -89,9 +89,9 @@ export async function getConnectionData(userId: string): Promise<ConnectionData>
 
 function connectionError(message: string): AppError {
   if (message.includes("CONFLICT") || message.includes("ALREADY_CONNECTED")) {
-    return new AppError("CONFLICT", "이미 연결 요청이 있거나 연결된 친구예요.");
+    return new AppError("CONFLICT", "이미 친구이거나 주고받은 친구 요청이 있어요.");
   }
-  return new AppError("INVALID_INPUT", "친구 연결을 처리하지 못했어요.");
+  return new AppError("INVALID_INPUT", "친구 요청을 처리하지 못했어요.");
 }
 
 export async function sendConnectionRequest(
@@ -133,7 +133,7 @@ export async function disconnectFriend(friendId: string): Promise<{ disconnected
     friend_id: friendId,
   });
   if (error) throw connectionError(error.message);
-  if (!data) throw new AppError("NOT_FOUND", "친구 연결을 찾지 못했어요.");
+  if (!data) throw new AppError("NOT_FOUND", "친구를 찾지 못했어요.");
   return { disconnected: true };
 }
 

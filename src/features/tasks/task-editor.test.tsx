@@ -46,7 +46,7 @@ it("shows existing time and recurrence when editing and retains input after fail
   );
   expect(screen.getByLabelText("시간 (선택)")).toBeVisible();
   fireEvent.change(screen.getByLabelText("할 일"), { target: { value: "수정한 일정" } });
-  fireEvent.click(screen.getByRole("button", { name: "변경 저장" }));
+  fireEvent.click(screen.getByRole("button", { name: "수정 완료" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("저장 실패");
   expect(screen.getByLabelText("할 일")).toHaveValue("수정한 일정");
 });

@@ -1,0 +1,165 @@
+.filters {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 2px 12px;
+  margin-bottom: 4px;
+}
+.filters button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  min-height: 44px;
+  max-width: 220px;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 15px;
+}
+.filters button span {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.filters button[aria-pressed="true"] {
+  background: var(--lemon-100);
+  border-color: var(--lemon-500);
+  font-weight: 700;
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.toolbar p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.toolbar button {
+  flex-shrink: 0;
+  font-size: 14px;
+  padding-inline: 8px;
+}
+.feed {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.date {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  margin: 8px 0 12px;
+}
+.event {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.identity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.identity button {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 0;
+  gap: 10px;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  color: var(--ink);
+}
+.identity strong {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.identity time {
+  font-size: 13px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.kind {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  margin: 12px 0 6px;
+}
+.kind svg {
+  flex-shrink: 0;
+}
+.completed {
+  color: var(--leaf-700);
+}
+.created {
+  color: var(--lemon-700);
+}
+.title,
+.titleButton {
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: var(--ink);
+}
+.titleButton {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  min-height: 44px;
+  text-align: left;
+}
+.titleButton svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.taskDate {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 6px 0 14px;
+}
+.cheer {
+  background: var(--cream);
+  border-color: var(--line);
+  color: var(--muted);
+  font-size: 15px;
+}
+.empty {
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  padding: 28px 20px;
+}
+.empty svg {
+  margin: auto;
+  color: var(--leaf-600);
+}
+.empty h2 {
+  font-size: 18px;
+}
+.empty p {
+  color: var(--muted);
+  font-size: 16px;
+}
+.error {
+  color: var(--danger);
+}

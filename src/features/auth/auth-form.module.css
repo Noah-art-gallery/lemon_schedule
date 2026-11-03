@@ -18,6 +18,18 @@
   font-size: 28px;
   letter-spacing: -0.04em;
 }
+.heading p {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.6;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.heading p:first-of-type {
+  color: var(--ink);
+  font-weight: 600;
+}
 .switch {
   margin: 24px 0 0;
   font-size: 14px;

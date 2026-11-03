@@ -43,6 +43,9 @@ export function DailyFriendCard({
   triggerRef,
   onDirtyChange,
   onBusyChange,
+  composerOnly = false,
+  onComposerClose,
+  onSaved,
 }: {
   friend: { id: string; displayName: string; avatarKey: ProfileAvatarKey };
   compact?: boolean;
@@ -51,6 +54,9 @@ export function DailyFriendCard({
   triggerRef?: (node: HTMLButtonElement | null) => void;
   onDirtyChange?: (dirty: boolean) => void;
   onBusyChange?: (busy: boolean) => void;
+  composerOnly?: boolean;
+  onComposerClose?: () => void;
+  onSaved?: (day: EncouragementDay) => void;
 }) {
   const { demo, user } = useAuth();
   const [day, setDay] = useState<EncouragementDay | null>(null);
@@ -74,9 +80,9 @@ export function DailyFriendCard({
   const sendTrigger = useRef<HTMLButtonElement>(null);
   const editTrigger = useRef<HTMLButtonElement>(null);
   const firstReaction = useRef<HTMLButtonElement>(null);
-  const callbacks = useRef({ onDirtyChange, onBusyChange });
+  const callbacks = useRef({ onDirtyChange, onBusyChange, onComposerClose, onSaved });
   useEffect(() => {
-    callbacks.current = { onDirtyChange, onBusyChange };
+    callbacks.current = { onDirtyChange, onBusyChange, onComposerClose, onSaved };
   });
   useEffect(() => {
     dayRef.current = day;
@@ -109,11 +115,18 @@ export function DailyFriendCard({
           callbacks.current.onDirtyChange?.(false);
           setError("새로운 하루로 바뀌었어요");
         } else setError("");
+        if (composerOnly && !dayRef.current) {
+          setReaction(next.mine?.reaction ?? null);
+          setMessage(next.mine?.message ?? "");
+          setQuote(next.mine?.quote?.id ?? null);
+          setQuoteOpen(Boolean(next.mine?.quote));
+          setEditing(true);
+        }
         dayRef.current = next;
         setDay(next);
       } catch (cause) {
         if (!active || version !== request.current) return;
-        setError(cause instanceof Error ? cause.message : "오늘을 불러오지 못했어요");
+        setError(cause instanceof Error ? cause.message : "오늘의 할 일을 불러오지 못했어요");
         if (
           cause instanceof AppError &&
           ["FORBIDDEN", "NOT_FOUND", "UNAUTHENTICATED"].includes(cause.code)
@@ -144,7 +157,7 @@ export function DailyFriendCard({
       window.removeEventListener("focus", refresh);
       window.clearInterval(timer);
     };
-  }, [friend.id, demo, user?.id, reload]);
+  }, [friend.id, demo, user?.id, reload, composerOnly]);
   function start() {
     if (!day || lock.current) return;
     setReaction(day.mine?.reaction ?? null);
@@ -174,6 +187,7 @@ export function DailyFriendCard({
     setEditing(false);
     setDiscard(false);
     callbacks.current.onDirtyChange?.(false);
+    if (composerOnly) callbacks.current.onComposerClose?.();
     window.setTimeout(() => (editTrigger.current ?? sendTrigger.current)?.focus(), 0);
   }
   async function submit(remove = false) {
@@ -204,6 +218,7 @@ export function DailyFriendCard({
       const next = { ...day, mine };
       dayRef.current = next;
       setDay(next);
+      callbacks.current.onSaved?.(next);
       showFeedback({
         kind: "success",
         title: remove ? "응원을 취소했어요" : day.mine ? "응원을 수정했어요" : "응원을 보냈어요",
@@ -211,6 +226,7 @@ export function DailyFriendCard({
       setEditing(false);
       setConfirm(false);
       callbacks.current.onDirtyChange?.(false);
+      if (composerOnly) callbacks.current.onComposerClose?.();
       window.setTimeout(() => (mine ? savedHeading.current : sendTrigger.current)?.focus(), 0);
     } catch (cause) {
       if (!mounted.current || version !== request.current) return;
@@ -245,10 +261,10 @@ export function DailyFriendCard({
   const formId = `daily-form-${friend.id}`;
   return (
     <article
-      className={`${styles.card} ${compact ? styles.compact : ""}`}
+      className={composerOnly ? undefined : `${styles.card} ${compact ? styles.compact : ""}`}
       aria-label={`${friend.displayName}의 하루`}
     >
-      {!compact ? (
+      {!compact && !composerOnly ? (
         <div className={styles.identityRow}>
           <button
             aria-label={friend.displayName}
@@ -272,16 +288,18 @@ export function DailyFriendCard({
         </div>
       ) : null}
       <FeedbackToast feedback={feedback} onDismiss={dismissFeedback} />
-      {loading ? <LoadingIndicator compact label="오늘을 불러오는 중" /> : null}
-      {!editing && error ? (
+      {loading && !composerOnly ? (
+        <LoadingIndicator compact label="오늘의 할 일을 불러오는 중" />
+      ) : null}
+      {!editing && error && !composerOnly ? (
         <div role="alert" className={styles.error}>
           <p>{error}</p>
           <Button variant="ghost" disabled={busy} onClick={() => setReload((v) => v + 1)}>
-            오늘 다시 불러오기
+            오늘의 할 일 새로고침
           </Button>
         </div>
       ) : null}
-      {day ? (
+      {day && !composerOnly ? (
         <>
           {!compact ? (
             <div className={styles.tasks}>
@@ -345,11 +363,14 @@ export function DailyFriendCard({
         </>
       ) : null}
       <Panel
-        open={editing && Boolean(day)}
+        open={composerOnly || (editing && Boolean(day))}
         history={false}
         title={day?.mine ? "응원 수정" : "응원 보내기"}
         className={styles.composerPanel}
-        onClose={closeComposer}
+        onClose={() => {
+          if (composerOnly && !day) callbacks.current.onComposerClose?.();
+          else closeComposer();
+        }}
         onBeforeClose={() => !lock.current}
         footer={
           <div className={styles.footer}>
@@ -368,13 +389,22 @@ export function DailyFriendCard({
               type="submit"
               fullWidth
               loading={busy}
-              disabled={!reaction || busy}
+              disabled={!day || !reaction || busy}
             >
-              {day?.mine ? "수정 저장" : "응원 보내기"}
+              {day?.mine ? "수정 완료" : "응원 보내기"}
             </Button>
           </div>
         }
       >
+        {composerOnly && loading ? <LoadingIndicator label="오늘의 할 일을 불러오는 중" /> : null}
+        {composerOnly && !day && error ? (
+          <div role="alert" className={styles.error}>
+            <p>{error}</p>
+            <Button variant="ghost" onClick={() => setReload((v) => v + 1)}>
+              다시 시도
+            </Button>
+          </div>
+        ) : null}
         {day ? (
           <form
             id={formId}
@@ -455,7 +485,7 @@ export function DailyFriendCard({
                         changed();
                       }}
                     >
-                      <option value="">하루 전체에 보내기</option>
+                      <option value="">할 일 선택 안 함</option>
                       {day.occurrences.map((item) => (
                         <option key={item.id} value={item.id}>
                           {item.title_snapshot}
@@ -486,7 +516,7 @@ export function DailyFriendCard({
               <div role="alert" className={styles.error}>
                 <p>{error}</p>
                 <Button variant="ghost" disabled={busy} onClick={() => setReload((v) => v + 1)}>
-                  오늘 다시 불러오기
+                  오늘의 할 일 새로고침
                 </Button>
               </div>
             ) : null}

@@ -46,6 +46,7 @@ for (const table of protectedTables) {
 }
 
 for (const rpc of [
+  "list_friend_timeline",
   "get_daily_encouragement",
   "get_encouragement_day",
   "upsert_daily_encouragement",
@@ -377,4 +378,24 @@ for (const field of ["avatarkey", "authoravatarkey", "actoravatarkey"]) {
 
 console.log(
   `SQL contract checks passed (${protectedTables.length} RLS tables, ${migrations.length} migration).`,
+);
+
+const timelineSql = readFileSync(
+  join(migrationDirectory, "20261024083537_friend_timeline.sql"),
+  "utf8",
+).toLowerCase();
+for (const contract of [
+  /security definer set search_path = ''/,
+  /private\.lock_user_network\(auth\.uid\(\)\)/,
+  /private\.are_connected\(auth\.uid\(\), target_friend_id\)/,
+  /join friends f on f.id = t.owner_id/,
+  /join friends f on f.id = o.owner_id/,
+  /o.status = 'completed' and o.first_completed_at is not null/,
+  /e.occurred_at, e.event_rank, e.event_id/,
+  /limit page_limit \+ 1/,
+])
+  assert.match(timelineSql, contract);
+assert.doesNotMatch(
+  timelineSql,
+  /insert into|update public|delete from|grant select|email|device_tokens|drawing_path/,
 );

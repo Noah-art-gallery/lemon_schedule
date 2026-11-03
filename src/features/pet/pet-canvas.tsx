@@ -149,8 +149,8 @@ export function PetCanvas({ onSave, strokeColor, onDirtyChange }: PetCanvasProps
             <Eraser size={16} aria-hidden="true" /> 지우개
           </Button>
         </div>
-        <div className={styles.opacity} role="group" aria-label="선 농도">
-          <span>농도</span>
+        <div className={styles.opacity} role="group" aria-label="펜 진하기">
+          <span>진하기</span>
           {[0.4, 0.7, 1].map((value) => (
             <Button
               key={value}

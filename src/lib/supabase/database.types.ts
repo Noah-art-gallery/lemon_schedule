@@ -206,6 +206,16 @@ export type Database = {
         Returns: Json;
       };
       delete_daily_encouragement: { Args: { target_encouragement_id: number }; Returns: boolean };
+      list_friend_timeline: {
+        Args: {
+          target_friend_id: string | null;
+          cursor_occurred_at: string | null;
+          cursor_kind: string | null;
+          cursor_event_id: number | null;
+          page_limit: number;
+        };
+        Returns: Json;
+      };
       list_social_activity: {
         Args: {
           target_friend_id: string | null;

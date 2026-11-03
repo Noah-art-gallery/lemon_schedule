@@ -108,7 +108,7 @@ it.each([
         nextCursor: null,
       };
     });
-    render(<FriendsScreen />);
+    renderFriends();
     await screen.findByRole("button", { name: "지민" });
     if (mode === "friend-history") {
       fireEvent.click(screen.getByRole("button", { name: "지민" }));
@@ -134,7 +134,7 @@ it.each([
   },
 );
 it("returns focus to the selected friend after leaving their overview", async () => {
-  render(<FriendsScreen />);
+  renderFriends();
   const trigger = await screen.findByRole("button", { name: "지민" });
   trigger.focus();
   fireEvent.click(trigger);
@@ -143,3 +143,9 @@ it("returns focus to the selected friend after leaving their overview", async ()
   fireEvent.click(back);
   expect(screen.getByRole("button", { name: "지민" })).toHaveFocus();
 });
+
+function renderFriends() {
+  const view = render(<FriendsScreen />);
+  fireEvent.click(screen.getByRole("tab", { name: "친구별" }));
+  return view;
+}
