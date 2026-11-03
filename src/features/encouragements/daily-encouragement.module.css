@@ -1,13 +1,18 @@
 .card {
-  padding: 20px 0 16px;
-  border-bottom: 1px solid var(--line);
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  margin-bottom: 12px;
   min-width: 0;
 }
 .card:first-child {
-  padding-top: 4px;
+  padding-top: 16px;
 }
 .compact {
   border: 0;
+  border-radius: 0;
+  background: transparent;
   padding: 8px 0 16px;
 }
 .identityRow {
@@ -42,7 +47,7 @@
 .header time,
 .recipient time {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
   color: var(--muted);
   margin-top: 2px;
@@ -74,7 +79,7 @@
   border: 0;
   background: none;
   text-align: left;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.5;
   color: var(--ink);
   cursor: pointer;
@@ -123,7 +128,7 @@
   margin-top: 2px;
 }
 .sendEntry {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   min-height: 44px;
   padding: 8px 10px;

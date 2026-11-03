@@ -40,7 +40,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
           email: String(data.get("email") ?? ""),
           password: String(data.get("password") ?? ""),
           displayName: String(data.get("displayName") ?? ""),
-          timeZone: String(data.get("timeZone") ?? ""),
+          timeZone: getDeviceTimeZone(),
         });
       } else {
         await signIn({
@@ -72,6 +72,8 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         <Brand />
         <div className={styles.heading}>
           <h1 id="auth-title">{signup ? "회원가입" : "로그인"}</h1>
+          <p>하나씩 해내고, 서로 응원해요</p>
+          <p>친구·가족과 할 일을 공유하고, 하나씩 해내며 나만의 펫을 키워요.</p>
         </div>
         <form className="form-stack" onSubmit={submit}>
           {signup ? <Field label="닉네임" name="displayName" maxLength={40} required /> : null}
@@ -85,15 +87,6 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
             autoComplete={signup ? "new-password" : "current-password"}
             required
           />
-          {signup ? (
-            <Field
-              label="시간대"
-              name="timeZone"
-              defaultValue={getDeviceTimeZone()}
-              hint="할 일의 날짜를 정하는 기준"
-              required
-            />
-          ) : null}
           {error ? (
             <p className="form-error" role="alert">
               {error}

@@ -44,7 +44,7 @@ async function startThenDiscard() {
   fireEvent.click(screen.getByRole("button", { name: "전체 지우기" }));
   fireEvent.click(screen.getByRole("button", { name: "펫 저장" }));
   fireEvent.click(screen.getByRole("button", { name: "닫기" }));
-  fireEvent.click(screen.getByRole("button", { name: "그림 버리기" }));
+  fireEvent.click(screen.getByRole("button", { name: "버리고 닫기" }));
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 }
 it("PNG 변환 중 취소하면 지연 콜백이 기존 펫을 저장하지 않는다", async () => {

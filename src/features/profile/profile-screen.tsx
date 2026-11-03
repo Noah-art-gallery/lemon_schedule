@@ -315,7 +315,7 @@ export function ProfileScreen() {
               ) : null}
             </div>
             {pushState === "on" || pushState === "off" ? (
-              <p className={styles.note}>받은 응원과 친구 연결 소식을 알려드려요</p>
+              <p className={styles.note}>응원을 받거나 친구 요청·수락 소식이 오면 알려드려요</p>
             ) : null}
             {pushError ? (
               <p role="alert" className="form-error">
@@ -371,7 +371,7 @@ export function ProfileScreen() {
                       setError("");
                     }}
                   >
-                    변경 버리기
+                    버리고 닫기
                   </Button>
                 </div>
               </div>
@@ -411,6 +411,7 @@ export function ProfileScreen() {
                 </fieldset>
                 <Field
                   label="시간대"
+                  hint="예: Asia/Seoul · 오늘의 할 일을 나누는 기준이에요"
                   name="timeZone"
                   value={draft.timeZone}
                   onChange={(event) => setDraft({ ...draft, timeZone: event.target.value })}

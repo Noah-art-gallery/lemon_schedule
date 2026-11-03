@@ -16,8 +16,17 @@ export interface ProfileDetails {
 
 export const profileInputSchema = z.object({
   avatarKey: z.enum(profileAvatarKeys).optional(),
-  displayName: z.string().trim().min(1).max(40).optional(),
-  timeZone: z.string().trim().refine(isValidTimeZone).optional(),
+  displayName: z
+    .string()
+    .trim()
+    .min(1, "닉네임을 입력해 주세요.")
+    .max(40, "닉네임은 40자 이하로 입력해 주세요.")
+    .optional(),
+  timeZone: z
+    .string()
+    .trim()
+    .refine(isValidTimeZone, "시간대를 확인해 주세요. 예: Asia/Seoul")
+    .optional(),
 });
 
 const profileUpdateResultSchema = z.object({

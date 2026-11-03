@@ -52,3 +52,9 @@
 하루 응원 링크는 `/?dailyEncouragement=<id>`, 기존 응원은 `/?occurrence=<id>&encouragement=<id>`, 요청은 `/friends/?request=<id>`, 수락은 `/friends/?friend=<UUID>`다. 기존 `/?occurrence=<id>`와 `/friends/?friend=<UUID>&occurrence=<id>`도 지원한다. 웹훅의 완료 이벤트 응답은 HTTP 200 `{ skipped: "DIRECT_NOTIFICATION_ONLY" }`다.
 
 휴대폰 탭 대상에는 `notification=<id>`도 포함하며 실제 대상 조회 성공 후에만 읽음 처리한다.
+
+## 친구 타임라인
+
+`listFriendTimeline({ friendId?, cursor?: { occurredAt, kind, eventId }, limit? })`은 `list_friend_timeline` RPC를 사용한다. `kind`는 `created` 또는 `completed`, 기본 limit은 20이며 1~100만 허용한다. 커서 세 값은 함께 전달하고 PostgreSQL 시각 문자열의 소수점 정밀도를 유지한다.
+
+반환값은 `{ items, nextCursor, viewerTimeZone }`이다. 각 행은 종류·사건 ID·시각, 공개 owner(id/displayName/avatarKey), ownerDay, cheeredToday, task(id/title/dueDate), occurrenceId(등록은 null)를 포함한다. viewerTimeZone은 현재 사용자 자신의 시간대다. created 제목은 현재 원본, completed 제목은 발생 건 snapshot이다. 비연결 친구 필터는 FORBIDDEN, 비인증은 UNAUTHENTICATED이며 잘못된 입력·응답·누락된 RPC는 INVALID_INPUT으로 처리한다. 조회 실패를 성공한 빈 목록으로 바꾸지 않는다.

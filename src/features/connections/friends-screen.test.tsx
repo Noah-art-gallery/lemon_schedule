@@ -93,7 +93,7 @@ beforeEach(() => {
   });
 });
 it("keeps friend deletion inside management and cancellation preserves connection", async () => {
-  render(<FriendsScreen />);
+  renderFriends();
   await screen.findByText("수학 문제 5개 풀기");
   expect(screen.queryByRole("button", { name: "차단" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "친구 삭제" })).not.toBeInTheDocument();
@@ -115,7 +115,7 @@ it("locks destructive submission and retains the friend on request failure", asy
         reject = no;
       }),
   );
-  render(<FriendsScreen />);
+  renderFriends();
   await screen.findByText("수학 문제 5개 풀기");
   fireEvent.click(screen.getByRole("button", { name: "지민" }));
   fireEvent.click(await screen.findByLabelText("친구 관리"));
@@ -138,13 +138,13 @@ it("shows one daily composer for a friend even with several tasks", async () => 
     occurrences: [occurrence, { ...occurrence, id: 999, title_snapshot: "두 번째 할 일" }],
     mine: null,
   });
-  render(<FriendsScreen />);
+  renderFriends();
   await screen.findByText("두 번째 할 일");
   expect(screen.getAllByRole("button", { name: "응원 보내기" })).toHaveLength(1);
 });
 it("removes a successfully disconnected friend and their cached activity", async () => {
   vi.mocked(disconnectFriend).mockResolvedValue({ disconnected: true });
-  render(<FriendsScreen />);
+  renderFriends();
   await screen.findByText("수학 문제 5개 풀기");
   fireEvent.click(screen.getByRole("button", { name: "지민" }));
   fireEvent.click(await screen.findByLabelText("친구 관리"));
@@ -156,18 +156,18 @@ it("removes a successfully disconnected friend and their cached activity", async
   expect(screen.queryByRole("button", { name: "지민" })).not.toBeInTheDocument();
 });
 it("invalidates the selected friend's view when a refreshed relationship is gone", async () => {
-  render(<FriendsScreen />);
+  renderFriends();
   await screen.findByText("수학 문제 5개 풀기");
   fireEvent.click(screen.getByRole("button", { name: "지민" }));
   await screen.findByRole("heading", { name: "지민" });
   vi.mocked(getConnectionData).mockResolvedValue({ friends: [], incoming: [], outgoing: [] });
   fireEvent(window, new Event("focus"));
-  await screen.findByText("연결이 해제되어 더 이상 할 일을 볼 수 없어요");
+  await screen.findByText("친구 관계가 해제되어 더 이상 할 일을 볼 수 없어요");
   expect(screen.queryByRole("heading", { name: "지민" })).not.toBeInTheDocument();
   expect(screen.queryByText("수학 문제 5개 풀기")).not.toBeInTheDocument();
 });
 it("opens a separate composer without sending a reaction", async () => {
-  render(<FriendsScreen />);
+  renderFriends();
   await screen.findByText("수학 문제 5개 풀기");
   expect(getOccurrenceDetail).not.toHaveBeenCalled();
   expect(screen.queryByRole("button", { name: "박수" })).not.toBeInTheDocument();
@@ -180,7 +180,7 @@ it("opens a separate composer without sending a reaction", async () => {
   expect(saveDailyEncouragement).not.toHaveBeenCalled();
 });
 it("confirms abandoning an inline draft before selecting a friend", async () => {
-  render(<FriendsScreen />);
+  renderFriends();
   fireEvent.click((await screen.findAllByRole("button", { name: "응원 보내기" }))[0]);
   fireEvent.change(await screen.findByRole("textbox", { name: "응원글" }), {
     target: { value: "keep me" },
@@ -203,7 +203,7 @@ it("ignores an old friend response after returning to the activity feed", async 
         resolve = yes;
       }),
   );
-  render(<FriendsScreen />);
+  renderFriends();
   await screen.findByText("수학 문제 5개 풀기");
   fireEvent.click(screen.getByRole("button", { name: "지민" }));
   await waitFor(() => expect(listOccurrenceWindow).toHaveBeenCalled());
@@ -213,7 +213,7 @@ it("ignores an old friend response after returning to the activity feed", async 
   expect(screen.getByRole("button", { name: "지민" })).toBeInTheDocument();
 });
 it("expands the future range beyond a year using the owner's today", async () => {
-  render(<FriendsScreen />);
+  renderFriends();
   await screen.findByText("수학 문제 5개 풀기");
   fireEvent.click(screen.getByRole("button", { name: "지민" }));
   await waitFor(() => expect(screen.getByRole("tab", { name: "예정" })).not.toBeDisabled());
@@ -231,7 +231,7 @@ it("expands the future range beyond a year using the owner's today", async () =>
 
 it("removes a disconnected friend's cache even if the subsequent refresh fails", async () => {
   vi.mocked(disconnectFriend).mockResolvedValue({ disconnected: true });
-  render(<FriendsScreen />);
+  renderFriends();
   await screen.findByText("수학 문제 5개 풀기");
   fireEvent.click(screen.getByRole("button", { name: "지민" }));
   await waitFor(() => expect(screen.getByRole("tab", { name: "기록" })).not.toBeDisabled());
@@ -246,7 +246,7 @@ it("removes a disconnected friend's cache even if the subsequent refresh fails",
   expect(screen.queryByText("수학 문제 5개 풀기")).not.toBeInTheDocument();
 });
 it("drops prior account friend detail while a new account is loading", async () => {
-  const view = render(<FriendsScreen />);
+  const view = renderFriends();
   await screen.findByText("수학 문제 5개 풀기");
   fireEvent.click(screen.getByRole("button", { name: "지민" }));
   await waitFor(() => expect(screen.getByRole("tab", { name: "기록" })).not.toBeDisabled());
@@ -258,7 +258,7 @@ it("drops prior account friend detail while a new account is loading", async () 
   expect(screen.queryByText("수학 문제 5개 풀기")).not.toBeInTheDocument();
 });
 it("clears cached detail immediately on a realtime relationship change before refetch", async () => {
-  render(<FriendsScreen />);
+  renderFriends();
   await screen.findByText("수학 문제 5개 풀기");
   fireEvent.click(screen.getByRole("button", { name: "지민" }));
   await waitFor(() => expect(screen.getByRole("tab", { name: "기록" })).not.toBeDisabled());
@@ -269,7 +269,7 @@ it("clears cached detail immediately on a realtime relationship change before re
   expect(screen.queryByRole("heading", { name: "지민" })).not.toBeInTheDocument();
 });
 it("drops signed-out daily draft and never sends it", async () => {
-  const view = render(<FriendsScreen />);
+  const view = renderFriends();
   fireEvent.click((await screen.findAllByRole("button", { name: "응원 보내기" }))[0]);
   fireEvent.change(screen.getByLabelText("응원글"), { target: { value: "unsent" } });
   reviewAuth.id = null;
@@ -286,19 +286,19 @@ it("ignores an old account's late feed response after the next account loads", a
         resolve = yes;
       }),
   );
-  const view = render(<FriendsScreen />);
+  const view = renderFriends();
   await waitFor(() => expect(listSocialActivity).toHaveBeenCalledTimes(1));
   vi.mocked(getConnectionData).mockResolvedValue({ friends: [], incoming: [], outgoing: [] });
   vi.mocked(listSocialActivity).mockResolvedValue({ items: [], nextCursor: null });
   reviewAuth.id = "second-account";
   view.rerender(<FriendsScreen />);
-  await screen.findByText("친구를 추가하고 서로의 하루를 응원해 보세요");
+  await screen.findByRole("button", { name: "초대 코드로 친구 추가" });
   await act(async () => resolve({ items: demoListSocial("demo-friend-1"), nextCursor: null }));
   expect(screen.queryByText("수학 문제 5개 풀기")).not.toBeInTheDocument();
 });
 
 it("keeps a current friend's draft when another friendship is added", async () => {
-  render(<FriendsScreen />);
+  renderFriends();
   fireEvent.click((await screen.findAllByRole("button", { name: "응원 보내기" }))[0]);
   fireEvent.change(await screen.findByRole("textbox", { name: "응원글" }), {
     target: { value: "아직 작성 중" },
@@ -324,7 +324,7 @@ it("keeps a current friend's draft when another friendship is added", async () =
 it.each(["INSERT", "UPDATE", "DELETE"] as const)(
   "keeps the draft across an unrelated request %s",
   async (change) => {
-    render(<FriendsScreen />);
+    renderFriends();
     fireEvent.click((await screen.findAllByRole("button", { name: "응원 보내기" }))[0]);
     fireEvent.change(await screen.findByLabelText("응원글"), {
       target: { value: "keep this draft" },
@@ -334,7 +334,7 @@ it.each(["INSERT", "UPDATE", "DELETE"] as const)(
   },
 );
 it("discards only the current friend's draft after its exact connection deletion", async () => {
-  render(<FriendsScreen />);
+  renderFriends();
   fireEvent.click((await screen.findAllByRole("button", { name: "응원 보내기" }))[0]);
   fireEvent.change(await screen.findByLabelText("응원글"), { target: { value: "must disappear" } });
   vi.mocked(getConnectionData).mockImplementation(() => new Promise(() => {}));
@@ -350,7 +350,7 @@ it("keeps a current draft when a different friend's connection is deleted", asyn
     incoming: [],
     outgoing: [],
   });
-  render(<FriendsScreen />);
+  renderFriends();
   fireEvent.click((await screen.findAllByRole("button", { name: "응원 보내기" }))[0]);
   fireEvent.change(await screen.findByLabelText("응원글"), {
     target: { value: "still connected" },
@@ -372,7 +372,7 @@ it("moves focus to the request heading after accepting removes the request row",
     .mockResolvedValueOnce(data)
     .mockResolvedValue({ ...data, incoming: [] });
   vi.mocked(respondToConnectionRequest).mockResolvedValue({ requestId: 41, status: "accepted" });
-  render(<FriendsScreen />);
+  renderFriends();
   await screen.findByText("수학 문제 5개 풀기");
   fireEvent.click(screen.getByRole("button", { name: /받은 요청.*확인하기/ }));
   fireEvent.click(await screen.findByRole("button", { name: "수락" }));
@@ -384,7 +384,7 @@ it("moves focus to the request heading after accepting removes the request row",
 it("guards links and browser back with the app dialog and preserved route state", async () => {
   window.history.pushState({ __NA: true, tree: "home" }, "", "/");
   window.history.pushState({ __NA: true, tree: "kept" }, "", "/friends/");
-  render(<FriendsScreen />);
+  renderFriends();
   fireEvent.click((await screen.findAllByRole("button", { name: "응원 보내기" }))[0]);
   const draft = await screen.findByLabelText("응원글");
   fireEvent.change(draft, { target: { value: "unsent" } });
@@ -412,7 +412,7 @@ it("guards links and browser back with the app dialog and preserved route state"
 });
 
 it("continues the exact blocked link once after app confirmation", async () => {
-  render(<FriendsScreen />);
+  renderFriends();
   fireEvent.click((await screen.findAllByRole("button", { name: "응원 보내기" }))[0]);
   fireEvent.change(await screen.findByLabelText("응원글"), { target: { value: "unsent" } });
   const link = document.createElement("a");
@@ -435,7 +435,7 @@ it("keeps multiple inline drafts across a failed unrelated feed refresh", async 
     incoming: [],
     outgoing: [],
   });
-  render(<FriendsScreen />);
+  renderFriends();
   await screen.findByText("수학 문제 5개 풀기");
   const compose = screen.getAllByRole("button", { name: "응원 보내기" });
   fireEvent.click(compose[0]);
@@ -454,7 +454,7 @@ it("keeps multiple inline drafts across a failed unrelated feed refresh", async 
 
 it("blocks target changes during inline submission", async () => {
   vi.mocked(saveDailyEncouragement).mockImplementationOnce(() => new Promise(() => {}));
-  render(<FriendsScreen />);
+  renderFriends();
   fireEvent.click((await screen.findAllByRole("button", { name: "응원 보내기" }))[0]);
   fireEvent.change(await screen.findByLabelText("응원글"), { target: { value: "saving" } });
   fireEvent.click(screen.getByRole("button", { name: "박수" }));
@@ -479,7 +479,7 @@ it("shows additional friends without hiding previously loaded choices", async ()
     incoming: [],
     outgoing: [],
   });
-  render(<FriendsScreen />);
+  renderFriends();
   fireEvent.click(await screen.findByRole("button", { name: "친구 더 보기" }));
   expect(screen.getByRole("button", { name: "친구 0" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "친구 15" })).toBeInTheDocument();
@@ -492,7 +492,7 @@ it("retains a rejected request on failure and removes it after confirmed success
   const data = demoGetConnections();
   vi.mocked(getConnectionData).mockResolvedValue(data);
   vi.mocked(respondToConnectionRequest).mockRejectedValueOnce(new Error("요청 처리 실패"));
-  render(<FriendsScreen />);
+  renderFriends();
   fireEvent.click(await screen.findByRole("button", { name: /받은 요청.*확인하기/ }));
   fireEvent.click(screen.getByRole("button", { name: "거절" }));
   await screen.findByText("요청 처리 실패");
@@ -514,7 +514,7 @@ it("cancels outgoing requests and returns focus to the remaining list", async ()
     requestId: data.outgoing[0].id,
     status: "cancelled",
   });
-  render(<FriendsScreen />);
+  renderFriends();
   fireEvent.click(await screen.findByRole("button", { name: /받은 요청.*확인하기/ }));
   vi.mocked(getConnectionData).mockResolvedValue({ ...data, outgoing: [] });
   fireEvent.click(screen.getByRole("button", { name: "요청 취소" }));
@@ -523,7 +523,7 @@ it("cancels outgoing requests and returns focus to the remaining list", async ()
 });
 
 it("restores the draft after cancelling detail navigation and opens detail only after approval", async () => {
-  render(<FriendsScreen />);
+  renderFriends();
   fireEvent.click((await screen.findAllByRole("button", { name: "응원 보내기" }))[0]);
   fireEvent.change(await screen.findByLabelText("응원글"), {
     target: { value: "keep detail draft" },
@@ -542,7 +542,7 @@ it("restores the draft after cancelling detail navigation and opens detail only 
 });
 
 it("guards tab and feed return with the same cancel-first dialog", async () => {
-  render(<FriendsScreen />);
+  renderFriends();
   fireEvent.click(await screen.findByRole("button", { name: "지민" }));
   await waitFor(() => expect(screen.getByRole("tab", { name: "기록" })).toBeEnabled());
   fireEvent.click(await screen.findByRole("button", { name: "응원 보내기" }));
@@ -559,7 +559,7 @@ it("guards tab and feed return with the same cancel-first dialog", async () => {
 });
 
 it("dismisses a pending discard decision immediately when server access is lost", async () => {
-  render(<FriendsScreen />);
+  renderFriends();
   fireEvent.click((await screen.findAllByRole("button", { name: "응원 보내기" }))[0]);
   fireEvent.change(await screen.findByLabelText("응원글"), { target: { value: "revoked" } });
   fireEvent.click(screen.getByRole("button", { name: "지민" }));
@@ -575,7 +575,7 @@ it("retires draft history before SPA departure so repeated reentry keeps one bac
   window.history.pushState({ __NA: true, tree: "home" }, "", "/");
   window.history.pushState({ __NA: true, tree: "friends" }, "", "/friends/");
   for (let cycle = 0; cycle < 2; cycle++) {
-    const view = render(<FriendsScreen />);
+    const view = renderFriends();
     fireEvent.click((await screen.findAllByRole("button", { name: "응원 보내기" }))[0]);
     fireEvent.change(await screen.findByLabelText("응원글"), {
       target: { value: `draft ${cycle}` },
@@ -596,7 +596,7 @@ it("retires draft history before SPA departure so repeated reentry keeps one bac
     await waitFor(() => expect(window.location.pathname).toBe("/friends/"));
     expect(window.history.state).toEqual({ __NA: true, tree: "friends" });
   }
-  render(<FriendsScreen />);
+  renderFriends();
   fireEvent.click((await screen.findAllByRole("button", { name: "응원 보내기" }))[0]);
   fireEvent.change(await screen.findByLabelText("응원글"), { target: { value: "third draft" } });
   act(() => window.history.back());
@@ -617,7 +617,7 @@ it("adopts a retained friend history marker rather than adding another on reentr
     "/friends/",
   );
   const length = window.history.length;
-  render(<FriendsScreen />);
+  renderFriends();
   fireEvent.click((await screen.findAllByRole("button", { name: "응원 보내기" }))[0]);
   fireEvent.change(await screen.findByLabelText("응원글"), { target: { value: "new draft" } });
   expect(window.history.length).toBe(length);
@@ -643,7 +643,7 @@ it.each(["back", "link"])(
       authorAvatarKey: "lemon",
       createdAt: new Date().toISOString(),
     });
-    const view = render(<FriendsScreen />);
+    const view = renderFriends();
     fireEvent.click((await screen.findAllByRole("button", { name: "응원 보내기" }))[0]);
     fireEvent.change(await screen.findByLabelText("응원글"), { target: { value: "saved" } });
     fireEvent.click(screen.getByRole("button", { name: "박수" }));
@@ -678,3 +678,9 @@ it.each(["back", "link"])(
     await waitFor(() => expect(window.location.pathname).toBe("/"));
   },
 );
+
+function renderFriends() {
+  const view = render(<FriendsScreen />);
+  fireEvent.click(screen.getByRole("tab", { name: "친구별" }));
+  return view;
+}

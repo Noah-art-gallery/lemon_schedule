@@ -2,14 +2,16 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppError } from "@/lib/errors";
+import { getDeviceTimeZone } from "@/lib/time";
 
 import { AuthForm } from "./auth-form";
 
-const { replace, authState, disableNativePush, signIn } = vi.hoisted(() => ({
+const { replace, authState, disableNativePush, signIn, signUp } = vi.hoisted(() => ({
   replace: vi.fn(),
   authState: { status: "authenticated" },
   disableNativePush: vi.fn(),
   signIn: vi.fn(),
+  signUp: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
@@ -17,7 +19,7 @@ vi.mock("./auth-provider", () => ({
   useAuth: () => ({ status: authState.status, user: { id: "current-user" }, demo: false }),
 }));
 vi.mock("@/features/push/push-service", () => ({ disableNativePush }));
-vi.mock("./auth-service", () => ({ signIn, signUp: vi.fn() }));
+vi.mock("./auth-service", () => ({ signIn, signUp }));
 
 describe("인증된 계정의 로그인 진입", () => {
   beforeEach(() => {
@@ -25,6 +27,28 @@ describe("인증된 계정의 로그인 진입", () => {
     replace.mockReset();
     disableNativePush.mockReset();
     signIn.mockReset();
+    signUp.mockReset();
+  });
+
+  it("시간대 입력 없이 기기 시간대를 가입 계약에 전달한다", async () => {
+    authState.status = "unauthenticated";
+    disableNativePush.mockResolvedValue(undefined);
+    signUp.mockResolvedValue(undefined);
+    render(<AuthForm mode="signup" />);
+    expect(screen.queryByLabelText("시간대")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("닉네임"), { target: { value: "레몬" } });
+    fireEvent.change(screen.getByLabelText("이메일"), { target: { value: "lemon@example.com" } });
+    fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: "password123" } });
+    fireEvent.click(screen.getByRole("button", { name: "회원가입" }));
+    await waitFor(() =>
+      expect(signUp).toHaveBeenCalledWith({
+        email: "lemon@example.com",
+        password: "password123",
+        displayName: "레몬",
+        timeZone: getDeviceTimeZone(),
+      }),
+    );
+    expect(replace).toHaveBeenCalledWith("/");
   });
 
   it("다른 계정 입력을 보여 주지 않고 앱으로 돌려보낸다", async () => {

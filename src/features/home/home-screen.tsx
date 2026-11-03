@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Plus, ChevronRight, Citrus } from "lucide-react";
+import { Plus, ChevronRight, Heart } from "lucide-react";
+import { CharacterSprite } from "@/components/ui/character-sprite";
 import { AppShell } from "@/components/layout/app-shell";
 import { DailyEncouragementPanel } from "@/features/encouragements/daily-encouragement-panel";
 import { PageHeading } from "@/components/layout/page-heading";
@@ -469,6 +470,20 @@ export function HomeScreen() {
           </Button>
         }
       />
+      {pet ? (
+        <Link href="/pet/" className={styles.pet}>
+          {pet.url ? (
+            <Image src={pet.url} width={40} height={40} alt="내 펫" />
+          ) : (
+            <CharacterSprite name="pet-default" size={48} />
+          )}
+          <span>
+            <strong>내 펫 · {pet.points}포인트</strong>
+            <small>다음 레벨까지 {5 - (pet.points % 5)}포인트</small>
+          </span>
+          <ChevronRight size={18} aria-hidden="true" />
+        </Link>
+      ) : null}
       <div className={styles.tabs} role="tablist" aria-label="할 일 보기">
         {(
           [
@@ -538,7 +553,13 @@ export function HomeScreen() {
             {todayItems.length ? (
               rows(todayItems)
             ) : (
-              <div className={styles.empty}>오늘 할 일이 없어요</div>
+              <div className={styles.empty}>
+                <p>오늘 할 일이 없어요</p>
+                <p>작은 일 하나부터 시작해 볼까요?</p>
+                <Button variant="secondary" onClick={() => addTrigger.current?.click()}>
+                  첫 할 일 적기
+                </Button>
+              </div>
             )}
           </section>
           <Button
@@ -548,19 +569,15 @@ export function HomeScreen() {
           >
             이전 할 일 더 보기 · {from} 이전
           </Button>
-          {pet ? (
-            <Link href="/pet/" className={styles.pet}>
-              {pet.url ? (
-                <Image src={pet.url} width={40} height={40} alt="내 펫" />
-              ) : (
-                <Citrus size={28} aria-hidden="true" />
-              )}
-              <span>
-                내 펫<small>{pet.points}포인트</small>
-              </span>
-              <ChevronRight size={18} aria-hidden="true" />
-            </Link>
-          ) : null}
+
+          <Link href="/friends/" className={styles.pet}>
+            <Heart size={24} aria-hidden="true" />
+            <span>
+              <strong>친구의 하루도 응원해요</strong>
+              <small>완료하지 못한 날에도 스티커 하나로 마음을 전해요</small>
+            </span>
+            <ChevronRight size={18} aria-hidden="true" />
+          </Link>
         </>
       ) : null}
       {tab === "upcoming" && !error && (!loading || items.length > 0) ? (

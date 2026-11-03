@@ -85,7 +85,7 @@ beforeEach(() => {
 it("opens cheers first, marks only after exact detail resolution, and retries failed reads inside detail", async () => {
   vi.mocked(markNotificationRead).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
   render(<NotificationScreen />);
-  fireEvent.click(await screen.findByRole("button", { name: /지민의 응원/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /지민님이 응원을 보냈어요/ }));
   expect(markNotificationRead).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "상세 조회 성공" }));
   const retry = await screen.findByRole("button", { name: "읽음 처리 다시 시도" });
@@ -116,20 +116,20 @@ it("does not open or mark an unavailable target", async () => {
 });
 it("routes connection receipts to their exact request without eagerly reading", async () => {
   render(<NotificationScreen />);
-  fireEvent.click(screen.getByRole("button", { name: "연결" }));
-  fireEvent.click(await screen.findByRole("button", { name: /민서의 연결 요청/ }));
+  fireEvent.click(screen.getByRole("button", { name: "친구 소식" }));
+  fireEvent.click(await screen.findByRole("button", { name: /민서님이 친구 요청을 보냈어요/ }));
   expect(mocks.push).toHaveBeenCalledWith("/friends/?request=41&notification=8");
   expect(markNotificationRead).not.toHaveBeenCalled();
 });
 it("uses the global head as mark-all high-water even from a filtered view", async () => {
   render(<NotificationScreen />);
-  fireEvent.click(screen.getByRole("button", { name: "연결" }));
-  await screen.findByRole("button", { name: /민서의 연결 요청/ });
+  fireEvent.click(screen.getByRole("button", { name: "친구 소식" }));
+  await screen.findByRole("button", { name: /민서님이 친구 요청을 보냈어요/ });
   vi.mocked(listInbox).mockImplementation(async ({ filter, limit }) => ({
     items: filter === "all" && limit === 1 ? [{ ...cheer, id: 12 }] : [connection],
     nextCursor: null,
   }));
-  fireEvent.click(screen.getByRole("button", { name: "모두 읽음" }));
+  fireEvent.click(screen.getByRole("button", { name: "모두 읽음으로 표시" }));
   await waitFor(() => expect(markAllInboxRead).toHaveBeenCalledWith({ throughId: 12 }));
   expect(listInbox).toHaveBeenCalledWith({ filter: "all", limit: 1 });
   expect(screen.getByText("소식을 모두 읽음으로 표시했어요")).toBeVisible();
@@ -147,8 +147,8 @@ it("discards late pagination when filters change", async () => {
   );
   render(<NotificationScreen />);
   fireEvent.click(await screen.findByRole("button", { name: "이전 소식 더 보기" }));
-  fireEvent.click(screen.getByRole("button", { name: "연결" }));
-  await screen.findByRole("button", { name: /민서의 연결 요청/ });
+  fireEvent.click(screen.getByRole("button", { name: "친구 소식" }));
+  await screen.findByRole("button", { name: /민서님이 친구 요청을 보냈어요/ });
   await act(async () =>
     finish({ items: [{ ...cheer, id: 7, taskTitle: "늦은 응답" }], nextCursor: null }),
   );
@@ -168,12 +168,12 @@ it.each(["second-account", null])(
         : { items: [cheer], nextCursor: null },
     );
     const view = render(<NotificationScreen />);
-    await screen.findByRole("button", { name: /지민의 응원/ });
-    fireEvent.click(screen.getByRole("button", { name: "모두 읽음" }));
+    await screen.findByRole("button", { name: /지민님이 응원을 보냈어요/ });
+    fireEvent.click(screen.getByRole("button", { name: "모두 읽음으로 표시" }));
     await waitFor(() => expect(finish).toBeDefined());
     mocks.userId = nextAccount;
     view.rerender(<NotificationScreen />);
-    if (nextAccount) await screen.findByRole("button", { name: /지민의 응원/ });
+    if (nextAccount) await screen.findByRole("button", { name: /지민님이 응원을 보냈어요/ });
     await act(async () => finish({ items: [{ ...cheer, id: 99 }], nextCursor: null }));
     expect(markAllInboxRead).not.toHaveBeenCalled();
   },
@@ -188,7 +188,7 @@ it.each([false, true])(
     );
     render(<NotificationScreen />);
     fireEvent.click(await screen.findByRole("button", { name: "이전 소식 더 보기" }));
-    fireEvent.click(await screen.findByRole("button", { name: /지민의 응원/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /지민님이 응원을 보냈어요/ }));
     expect(screen.getByRole("dialog")).toBeVisible();
     // The author deletes the cheer. The old item would now resolve unavailable,
     // but page 1 contains only the newer connection notification.
@@ -216,7 +216,7 @@ it.each([false, true])(
 );
 it("preserves the open detail and row DOM during a read-only refresh", async () => {
   render(<NotificationScreen />);
-  const row = await screen.findByRole("button", { name: /지민의 응원/ });
+  const row = await screen.findByRole("button", { name: /지민님이 응원을 보냈어요/ });
   fireEvent.click(row);
   vi.mocked(listInbox).mockResolvedValue({
     items: [{ ...cheer, readAt: "2026-10-12T01:00:00Z" }],
@@ -224,12 +224,12 @@ it("preserves the open detail and row DOM during a read-only refresh", async () 
   });
   await act(async () => mocks.refresh?.(false));
   expect(screen.getByRole("dialog")).toBeVisible();
-  expect(screen.getByRole("button", { name: /지민의 응원/ })).toBe(row);
+  expect(screen.getByRole("button", { name: /지민님이 응원을 보냈어요/ })).toBe(row);
 });
 
 it("preserves an unchanged target draft on a focus refresh", async () => {
   render(<NotificationScreen />);
-  fireEvent.click(await screen.findByRole("button", { name: /지민의 응원/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /지민님이 응원을 보냈어요/ }));
   const input = screen.getByRole("textbox", { name: "작성 중인 제목" });
   fireEvent.change(input, { target: { value: "작성 중인 변경" } });
   await act(async () => mocks.refresh?.(true));
@@ -243,7 +243,7 @@ it("revalidates the exact older target and retains its draft when the first page
   );
   render(<NotificationScreen />);
   fireEvent.click(await screen.findByRole("button", { name: "이전 소식 더 보기" }));
-  fireEvent.click(await screen.findByRole("button", { name: /지민의 응원/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /지민님이 응원을 보냈어요/ }));
   const input = screen.getByRole("textbox", { name: "작성 중인 제목" });
   fireEvent.change(input, { target: { value: "오래된 기록 편집 중" } });
   await act(async () => mocks.refresh?.(true));

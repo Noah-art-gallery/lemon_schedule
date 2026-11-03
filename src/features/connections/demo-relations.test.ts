@@ -13,6 +13,6 @@ it("revokes demo detail, feed, future tasks and cheer writes together", () => {
   expect(demoGetConnections().friends.some((friend) => friend.id === "demo-friend-1")).toBe(false);
   expect(demoListSocial("demo-friend-1")).toEqual([]);
   expect(demoListFriend("demo-friend-1")).toEqual([]);
-  expect(() => demoGetDetail(101)).toThrow(/연결이 해제/);
-  expect(() => demoSendEncouragement(101, "clap", "hello")).toThrow(/연결이 해제/);
+  expect(() => demoGetDetail(101)).toThrow(/친구 관계가 해제/);
+  expect(() => demoSendEncouragement(101, "clap", "hello")).toThrow(/친구 관계가 해제/);
 });

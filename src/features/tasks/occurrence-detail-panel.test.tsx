@@ -87,7 +87,7 @@ it.each([null, "19:30"])(
     const title = await screen.findByLabelText("할 일");
     fireEvent.change(title, { target: { value: "영어 복습" } });
     fireEvent.change(screen.getByLabelText(/시간/), { target: { value: "" } });
-    fireEvent.click(screen.getByRole("button", { name: "변경 저장" }));
+    fireEvent.click(screen.getByRole("button", { name: "수정 완료" }));
     await waitFor(() =>
       expect(rpc).toHaveBeenCalledWith(
         "update_task_schedule",

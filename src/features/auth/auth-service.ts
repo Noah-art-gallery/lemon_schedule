@@ -9,8 +9,15 @@ import { isValidTimeZone } from "@/lib/time";
 export const signUpSchema = z.object({
   email: z.email("올바른 이메일을 입력해 주세요."),
   password: z.string().min(8, "비밀번호는 8자 이상이어야 해요."),
-  displayName: z.string().trim().min(1, "닉네임을 입력해 주세요.").max(40),
-  timeZone: z.string().trim().refine(isValidTimeZone, "올바른 IANA 시간대를 입력해 주세요."),
+  displayName: z
+    .string()
+    .trim()
+    .min(1, "닉네임을 입력해 주세요.")
+    .max(40, "닉네임은 40자 이하로 입력해 주세요."),
+  timeZone: z
+    .string()
+    .trim()
+    .refine(isValidTimeZone, "기기의 시간대를 확인한 뒤 다시 시도해 주세요."),
 });
 
 export const signInSchema = z.object({
@@ -61,10 +68,7 @@ export async function signUp(input: z.input<typeof signUpSchema>): Promise<SignU
 
   if (error) throw authFailure(error);
   if (!data.user || !data.session) {
-    throw new AppError(
-      "INVALID_INPUT",
-      "즉시 로그인을 사용하려면 Supabase 이메일 확인 옵션을 꺼 주세요.",
-    );
+    throw new AppError("INVALID_INPUT", "가입한 이메일에서 인증 메일을 확인한 뒤 로그인해 주세요.");
   }
   const { data: profile, error: profileError } = await getSupabaseClient()
     .from("profile_private")

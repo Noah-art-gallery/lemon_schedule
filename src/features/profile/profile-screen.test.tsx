@@ -47,7 +47,7 @@ it("실패한 프로필 입력을 유지하고 재시도한다", async () => {
   fireEvent.click(screen.getByRole("button", { name: "저장" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   expect(screen.getByText("새 이름")).toBeInTheDocument();
-  expect(screen.getByText("프로필을 저장했어요")).toBeVisible();
+  expect(await screen.findByText("프로필을 저장했어요")).toBeVisible();
 });
 it("웹에서는 알림 켜기를 제공하지 않는다", async () => {
   render(<ProfileScreen />);
@@ -80,7 +80,7 @@ it("로그아웃 정리 실패 때 화면을 유지하고 중복 기기 해제�
   expect(mocks.replace).not.toHaveBeenCalled();
 });
 
-it("변경 버리기 확인은 계속 수정에 초점을 두고 취소하면 입력으로 돌아간다", async () => {
+it("버리고 닫기 확인은 계속 수정에 초점을 두고 취소하면 입력으로 돌아간다", async () => {
   render(<ProfileScreen />);
   await screen.findByText("지민");
   fireEvent.click(screen.getByRole("button", { name: "프로필 수정" }));
@@ -106,7 +106,7 @@ it("프로필 이미지만 변경해도 폐기를 확인하고 계속 수정하�
   expect(screen.getByRole("radio", { name: "고양이" })).toBeChecked();
   expect(mocks.updateProfile).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "취소" }));
-  fireEvent.click(screen.getByRole("button", { name: "변경 버리기" }));
+  fireEvent.click(screen.getByRole("button", { name: "버리고 닫기" }));
   fireEvent.click(screen.getByRole("button", { name: "프로필 수정" }));
   expect(screen.getByRole("radio", { name: "레몬" })).toBeChecked();
 });

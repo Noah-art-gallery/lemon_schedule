@@ -52,6 +52,7 @@ import type {
 } from "@/types/contracts";
 import type { TaskOccurrenceRow } from "@/lib/supabase/database.types";
 import styles from "./friends-experience.module.css";
+import { FriendTimeline } from "./friend-timeline";
 import { activityBoundary, needsOlderActivity } from "./activity-boundary";
 
 // Consume only our same-route entry before a new route is pushed. The shared promise
@@ -117,6 +118,8 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
   const { feedback, showFeedback, dismissFeedback } = useFeedback();
   const [, setActivity] = useState<SocialActivityItem[]>([]);
   const [, setCursor] = useState<CompletionCursor | null>(null);
+  const [listingTab, setListingTab] = useState<"timeline" | "friends">("timeline");
+  const timelineReturn = useRef<HTMLElement | null>(null);
   const [friendLimit, setFriendLimit] = useState(8);
   const [requestLimit, setRequestLimit] = useState(10);
   const [selected, setSelected] = useState<string | null>(null);
@@ -180,10 +183,14 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
   const returnFriendFocus = useRef<string | null>(null);
   useLayoutEffect(() => {
     if (selected || !returnFriendFocus.current) return;
-    (friendTriggers.current.get(returnFriendFocus.current) ?? addTrigger.current)?.focus({
+    (timelineReturn.current?.isConnected
+      ? timelineReturn.current
+      : (friendTriggers.current.get(returnFriendFocus.current) ?? addTrigger.current)
+    )?.focus({
       preventScroll: true,
     });
     returnFriendFocus.current = null;
+    timelineReturn.current = null;
   }, [selected]);
   const currentConnections = useRef(emptyConnections);
   const [threadVersion, setThreadVersion] = useState(0);
@@ -338,16 +345,9 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
     } else busyThreads.current.delete(key);
   }
 
-  function threadProps(id: number, ownerId: string, canCompose: boolean) {
+  function threadProps(id: number, ownerId: string) {
     return {
-      canCompose: false,
-      accessKey: `${ownerId}:${canCompose}:${threadVersion}`,
-      onDirtyChange: (dirty: boolean) => {
-        if (dirty) {
-          dirtyThreads.current.set(id, ownerId);
-          ensureHistoryGuard();
-        } else dirtyThreads.current.delete(id);
-      },
+      accessKey: `${ownerId}:${threadVersion}`,
       onBusyChange: (busy: boolean) => {
         if (busy) {
           busyThreads.current.set(id, ownerId);
@@ -397,7 +397,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
       setOverview(null);
       setConfirm(null);
       setMenu(false);
-      setNotice("연결이 해제되어 더 이상 할 일을 볼 수 없어요");
+      setNotice("친구 관계가 해제되어 더 이상 할 일을 볼 수 없어요");
     }
     if (detailOwner.current && !allowed.has(detailOwner.current)) {
       detailOwner.current = null;
@@ -560,7 +560,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
     try {
       const next = await refreshConnections();
       if (!next.friends.some((friend) => friend.id === id))
-        throw new AppError("FORBIDDEN", "친구 연결이 해제되었어요");
+        throw new AppError("FORBIDDEN", "친구 관계가 해제됐어요");
       const saved = cache.current.get(id);
       const date = saved?.today ?? toDateKey(new Date(), "UTC");
       let result = demo
@@ -866,11 +866,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
         <EncouragementThread
           occurrenceId={item.occurrence.id}
           summary={item.summary}
-          {...threadProps(
-            item.occurrence.id,
-            item.owner.id,
-            item.occurrence.status === "completed",
-          )}
+          {...threadProps(item.occurrence.id, item.owner.id)}
         />
       </article>
     );
@@ -880,6 +876,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
       <FeedbackToast feedback={feedback} onDismiss={dismissFeedback} />
       <PageHeading
         title="친구"
+        description="서로의 오늘을 보고, 하루 한 번 마음을 전해요."
         action={
           <Button
             ref={addTrigger}
@@ -927,33 +924,100 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
         </button>
       ) : null}
       {!selected ? (
+        <div className={styles.listingTabs} role="tablist" aria-label="친구 보기">
+          {(
+            [
+              ["timeline", "타임라인"],
+              ["friends", "친구별"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              id={`friends-tab-${value}`}
+              role="tab"
+              aria-controls={`friends-panel-${value}`}
+              aria-selected={listingTab === value}
+              onClick={() => {
+                if (requestLeave(() => setListingTab(value))) setListingTab(value);
+              }}
+              onKeyDown={(event) => {
+                if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                event.preventDefault();
+                const next =
+                  event.key === "Home"
+                    ? "timeline"
+                    : event.key === "End"
+                      ? "friends"
+                      : listingTab === "timeline"
+                        ? "friends"
+                        : "timeline";
+                if (requestLeave(() => setListingTab(next))) {
+                  setListingTab(next);
+                  document.getElementById(`friends-tab-${next}`)?.focus();
+                }
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {listingTab === "timeline" && data.friends.length > 0 ? (
+        <div
+          hidden={Boolean(selected)}
+          id="friends-panel-timeline"
+          role="tabpanel"
+          aria-labelledby="friends-tab-timeline"
+        >
+          <FriendTimeline
+            key={threadVersion}
+            friends={data.friends}
+            demo={demo}
+            onOpenFriend={(id) => {
+              timelineReturn.current = document.activeElement as HTMLElement;
+              void openFriend(id);
+            }}
+            onOpenOccurrence={openDetail}
+            onDirtyChange={dailyDirty}
+            onBusyChange={dailyBusy}
+          />
+        </div>
+      ) : null}
+      {!selected ? (
         <>
-          <section className={styles.friendSection} aria-labelledby="friend-picker-heading">
-            <h2 id="friend-picker-heading" className={styles.sectionTitle}>
-              친구들의 오늘 <span>{data.friends.length}</span>
-            </h2>
-            <div aria-label="친구들의 오늘">
-              {data.friends.slice(0, friendLimit).map((item) => (
-                <DailyFriendCard
-                  key={`${item.id}:${threadVersion}`}
-                  friend={item}
-                  triggerRef={(node) => {
-                    if (node) friendTriggers.current.set(item.id, node);
-                    else friendTriggers.current.delete(item.id);
-                  }}
-                  onOpen={() => void openFriend(item.id)}
-                  onOpenOccurrence={(id) => openDetail(id, item.id)}
-                  onDirtyChange={(dirty) => dailyDirty(item.id, dirty)}
-                  onBusyChange={(busy) => dailyBusy(item.id, busy)}
-                />
-              ))}
-            </div>
-            {data.friends.length > friendLimit ? (
-              <Button variant="ghost" onClick={() => setFriendLimit((count) => count + 8)}>
-                친구 더 보기
-              </Button>
-            ) : null}
-          </section>
+          {listingTab === "friends" ? (
+            <section
+              id="friends-panel-friends"
+              role="tabpanel"
+              aria-labelledby="friends-tab-friends"
+              className={styles.friendSection}
+            >
+              <h2 id="friend-picker-heading" className={styles.sectionTitle}>
+                친구들의 오늘 <span>{data.friends.length}</span>
+              </h2>
+              <div aria-label="친구들의 오늘">
+                {data.friends.slice(0, friendLimit).map((item) => (
+                  <DailyFriendCard
+                    key={`${item.id}:${threadVersion}`}
+                    friend={item}
+                    triggerRef={(node) => {
+                      if (node) friendTriggers.current.set(item.id, node);
+                      else friendTriggers.current.delete(item.id);
+                    }}
+                    onOpen={() => void openFriend(item.id)}
+                    onOpenOccurrence={(id) => openDetail(id, item.id)}
+                    onDirtyChange={(dirty) => dailyDirty(item.id, dirty)}
+                    onBusyChange={(busy) => dailyBusy(item.id, busy)}
+                  />
+                ))}
+              </div>
+              {data.friends.length > friendLimit ? (
+                <Button variant="ghost" onClick={() => setFriendLimit((count) => count + 8)}>
+                  친구 더 보기
+                </Button>
+              ) : null}
+            </section>
+          ) : null}
           {loading && !data.friends.length ? <LoadingIndicator label="친구를 불러오는 중" /> : null}
           {error ? (
             <div role="alert">
@@ -964,7 +1028,13 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
             </div>
           ) : null}
           {!loading && !error && !data.friends.length ? (
-            <p className={styles.empty}>친구를 추가하고 서로의 하루를 응원해 보세요</p>
+            <div className={styles.empty}>
+              <p>가까운 한 사람과 시작해요</p>
+              <p>초대 코드로 친구를 추가하면 서로의 할 일을 보고 응원할 수 있어요.</p>
+              <Button variant="secondary" onClick={() => addTrigger.current?.click()}>
+                초대 코드로 친구 추가
+              </Button>
+            </div>
           ) : null}
         </>
       ) : (
@@ -1076,11 +1146,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
                         occurrence={row}
                         summary={overview.summaries[row.id]}
                         onOpen={() => openDetail(row.id, selected)}
-                        encouragementProps={threadProps(
-                          row.id,
-                          selected,
-                          row.status === "completed",
-                        )}
+                        encouragementProps={threadProps(row.id, selected)}
                       />
                     </div>
                   ))}
@@ -1203,7 +1269,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
                             demo
                               ? demoRespondRequest(request.id, true)
                               : respondToConnectionRequest(request.id, true),
-                          "친구로 연결했어요",
+                          "친구가 됐어요",
                         )
                       }
                     >
@@ -1292,7 +1358,7 @@ function FriendsContent({ demo, userId }: { demo: boolean; userId?: string }) {
       <ConfirmDialog
         open={Boolean(confirm)}
         title={`${friend?.displayName ?? "친구"}님을 친구에서 삭제할까요?`}
-        description="서로의 할 일 공유가 끝나요. 다시 추가하려면 요청과 수락이 필요해요"
+        description="서로의 할 일을 볼 수 없게 돼요. 다시 친구가 되려면 친구 요청을 보내고 수락해야 해요"
         confirmLabel="친구 삭제하기"
         onCancel={() => {
           if (!pending) setConfirm(null);

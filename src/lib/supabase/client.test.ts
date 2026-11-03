@@ -4,6 +4,6 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 
 describe("getSupabaseClient", () => {
   it("fails clearly when public Supabase configuration is absent", () => {
-    expect(() => getSupabaseClient()).toThrow("Supabase 연결 정보가 없습니다");
+    expect(() => getSupabaseClient()).toThrow("서비스 연결 설정을 확인하지 못했어요");
   });
 });

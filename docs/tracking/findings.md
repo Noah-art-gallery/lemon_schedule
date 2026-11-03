@@ -21,3 +21,7 @@ Security Advisor는 인증 사용자용 보안 RPC 26개, 사용자 정책 없�
 ## 화면 환경의 미확인 범위
 
 좁은 브라우저 프레임과 CSS 글자 확대는 실제 휴대폰 키보드·안전 영역·OS 글자 확대를 대체하지 않는다. 줄인 동작 설정의 실제 미디어 전환도 아직 확인하지 못했다. 실기기 검증에서 이 환경 차이를 확인해야 한다.
+
+## 2026-10-24 친구 타임라인 운영 적용 전 검증
+
+새 `20261024083537_friend_timeline.sql`은 운영 DB에 적용하지 않았다. 운영에 화면을 배포하기 전에 migration과 `007_friend_timeline_contract.sql`을 포함한 Supabase pgTAP 검증이 필요하다. 현재 환경에는 Docker/psql 실행 도구가 없어 전체 Supabase 로컬 스택 검증은 수행하지 못했다. 외부 임시 디렉터리의 PGlite 0.5.11로 새 migration을 격리된 최소 스키마에 적용하고 쿼리·권한·커서·연결 범위를 검사했다. 이 검사는 기존 RLS 전체·advisory lock 동시성·운영 계정을 검증하지 않는다. 재현 스크립트는 `scripts/check-timeline-query.mjs`이며 `PGLITE_MODULE`에 별도 설치한 패키지의 `dist/index.js` 절대 경로를 지정한다. 첫 실행의 테스트용 are_connected 함수에 스키마 접두어가 빠져 격리 fixture 조회가 실패했고 이를 public.connections로 수정한 뒤 통과했다. 실제 migration 적용 실패는 없었다.

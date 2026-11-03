@@ -57,7 +57,7 @@ it("그리기 취소는 저장된 펫을 바꾸지 않는다", async () => {
   fireEvent.click(screen.getByRole("button", { name: "새로 그리기" }));
   fireEvent.click(screen.getByRole("button", { name: "선 그리기" }));
   fireEvent.click(screen.getByRole("button", { name: "닫기" }));
-  fireEvent.click(screen.getByRole("button", { name: "그림 버리기" }));
+  fireEvent.click(screen.getByRole("button", { name: "버리고 닫기" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   expect(mocks.savePetDrawing).not.toHaveBeenCalled();
   expect(screen.getByAltText("내 펫")).toHaveAttribute("src", "https://example.com/original.png");
@@ -65,12 +65,12 @@ it("그리기 취소는 저장된 펫을 바꾸지 않는다", async () => {
 it("미해금 항목은 점수를 표시하고 선택할 수 없다", async () => {
   render(<PetScreen />);
   await screen.findByAltText("내 펫");
-  expect(screen.getByRole("option", { name: "레몬 노랑 · 5점" })).toBeDisabled();
-  expect(screen.getByRole("option", { name: "잎사귀 모자 · 15점" })).toBeDisabled();
-  expect(screen.getByRole("option", { name: "햇살 정원 · 30점" })).toBeDisabled();
+  expect(screen.getByRole("option", { name: "레몬 노랑 · 5포인트" })).toBeDisabled();
+  expect(screen.getByRole("option", { name: "잎사귀 모자 · 15포인트" })).toBeDisabled();
+  expect(screen.getByRole("option", { name: "햇살 정원 · 30포인트" })).toBeDisabled();
 });
 
-it("그림 버리기 확인은 계속 그리기에 초점을 두고 그림을 보존한다", async () => {
+it("버리고 닫기 확인은 계속 그리기에 초점을 두고 그림을 보존한다", async () => {
   render(<PetScreen />);
   await screen.findByAltText("내 펫");
   fireEvent.click(screen.getByRole("button", { name: "새로 그리기" }));

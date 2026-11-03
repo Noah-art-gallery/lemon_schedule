@@ -162,7 +162,10 @@ export function PetScreen() {
   ].find((item) => item.points > (pet?.lemonPoints ?? 0));
   return (
     <AppShell>
-      <PageHeading title="펫" />
+      <PageHeading
+        title="펫"
+        description="할 일을 처음 완료할 때마다 1포인트를 받아요. 포인트를 모아 나만의 펫을 키워요."
+      />
       <FeedbackToast feedback={feedback} onDismiss={dismissFeedback} />
       {error && !drawing ? (
         <p role="alert" className="form-error">
@@ -241,10 +244,10 @@ export function PetScreen() {
               >
                 <span style={{ width: `${((pet.lemonPoints % 5) / 5) * 100}%` }} />
               </div>
-              <p>다음 레벨까지 {5 - (pet.lemonPoints % 5)}점</p>
+              <p>다음 레벨까지 {5 - (pet.lemonPoints % 5)}포인트</p>
               <p className={styles.unlock}>
                 {nextUnlock
-                  ? `${nextUnlock.points - pet.lemonPoints}점 더 모으면 ${nextUnlock.label}`
+                  ? `${nextUnlock.points - pet.lemonPoints}포인트 더 모으면 ${nextUnlock.label} 사용 가능`
                   : "모든 꾸미기를 열었어요"}
               </p>
             </div>
@@ -264,12 +267,12 @@ export function PetScreen() {
             {saving && !drawing ? <LoadingIndicator compact label="꾸미기 저장 중" /> : null}
             <label className={styles.setting}>
               <span>
-                <strong>그리기 붓 색상</strong>
-                <small>새로 그리는 선에 적용</small>
+                <strong>펜 색상</strong>
+                <small>앞으로 그릴 선의 색이에요</small>
               </span>
               <select
                 className="field__input"
-                aria-label="그리기 붓 색상"
+                aria-label="펜 색상"
                 value={pet.decorations.selectedColor}
                 disabled={saving}
                 onChange={(event) =>
@@ -280,7 +283,7 @@ export function PetScreen() {
               >
                 <option value="leaf-green">잎사귀 초록</option>
                 <option value="lemon-yellow" disabled={!pet.unlockedItems.includes("lemon-yellow")}>
-                  레몬 노랑 · 5점
+                  레몬 노랑 · 5포인트
                 </option>
               </select>
             </label>
@@ -297,7 +300,7 @@ export function PetScreen() {
               >
                 <option value="">없음</option>
                 <option value="leaf-hat" disabled={!pet.unlockedItems.includes("leaf-hat")}>
-                  잎사귀 모자 · 15점
+                  잎사귀 모자 · 15포인트
                 </option>
               </select>
             </label>
@@ -314,7 +317,7 @@ export function PetScreen() {
               >
                 <option value="">기본</option>
                 <option value="sunny-garden" disabled={!pet.unlockedItems.includes("sunny-garden")}>
-                  햇살 정원 · 30점
+                  햇살 정원 · 30포인트
                 </option>
               </select>
             </label>
@@ -341,7 +344,7 @@ export function PetScreen() {
                 계속 그리기
               </Button>
               <Button variant="danger" onClick={close}>
-                그림 버리기
+                버리고 닫기
               </Button>
             </div>
           </div>

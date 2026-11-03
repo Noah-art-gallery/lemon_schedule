@@ -3,16 +3,10 @@ import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FeedbackToast, LoadingIndicator, useFeedback } from "@/components/ui/feedback";
-import { AppError } from "@/lib/errors";
 import { useAuth } from "@/features/auth/auth-provider";
 import { getOccurrenceDetail } from "@/features/tasks/task-service";
-import {
-  demoGetDetail,
-  demoSendEncouragement,
-  demoDeleteEncouragement,
-} from "@/features/tasks/demo-task-store";
-import { deleteEncouragement, sendEncouragement } from "./encouragement-service";
-import { EncouragementComposer } from "./encouragement-composer";
+import { demoGetDetail, demoDeleteEncouragement } from "@/features/tasks/demo-task-store";
+import { deleteEncouragement } from "./encouragement-service";
 import { ReactionImage, reactionLabels } from "./reaction-image";
 import type { EncouragementSummary, OccurrenceDetail, Reaction } from "@/types/contracts";
 import styles from "@/features/tasks/task-experience.module.css";
@@ -57,13 +51,11 @@ function ReactionCounts({ summary }: { summary: EncouragementSummary }) {
 export interface EncouragementThreadProps {
   occurrenceId: number;
   summary: EncouragementSummary;
-  canCompose?: boolean;
   initialDetail?: OccurrenceDetail;
   targetEncouragementId?: number | null;
   onChanged?: (detail: OccurrenceDetail) => void;
-  onDirtyChange?: (dirty: boolean) => void;
   onBusyChange?: (busy: boolean) => void;
-  /** Change when access to the owner is revoked; this discards all cached drafts. */
+  /** Change when access to the owner is revoked; this discards cached records. */
   accessKey?: string | number;
 }
 export function EncouragementThread(props: EncouragementThreadProps) {
@@ -78,11 +70,9 @@ export function EncouragementThread(props: EncouragementThreadProps) {
 function ThreadState({
   occurrenceId,
   summary,
-  canCompose = false,
   initialDetail,
   targetEncouragementId,
   onChanged,
-  onDirtyChange,
   onBusyChange,
 }: EncouragementThreadProps) {
   const { demo, user } = useAuth();
@@ -94,7 +84,6 @@ function ThreadState({
   const restorePermissionFocus = useRef(false);
   const deleteTrigger = useRef<HTMLButtonElement | null>(null);
   const [expanded, setExpanded] = useState(Boolean(targetEncouragementId));
-  const [composing, setComposing] = useState(false);
   const [detail, setDetail] = useState(initialDetail ?? null);
   const [loading, setLoading] = useState(false);
   const { feedback, showFeedback, dismissFeedback } = useFeedback();
@@ -102,14 +91,13 @@ function ThreadState({
   const [forbidden, setForbidden] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
-  const [composerVersion, setComposerVersion] = useState(0);
   const generation = useRef(0);
   const stale = useRef(false);
   const alive = useRef(true);
   const lock = useRef(false);
-  const callbacks = useRef({ onChanged, onDirtyChange, onBusyChange });
+  const callbacks = useRef({ onChanged, onBusyChange });
   useEffect(() => {
-    callbacks.current = { onChanged, onDirtyChange, onBusyChange };
+    callbacks.current = { onChanged, onBusyChange };
   });
   useEffect(() => {
     alive.current = true;
@@ -173,9 +161,6 @@ function ThreadState({
       );
       setForbidden(true);
       setDetail(null);
-      setComposing(false);
-      setComposerVersion((v) => v + 1);
-      callbacks.current.onDirtyChange?.(false);
     }
     if (denied || showReadError)
       setError(cause instanceof Error ? cause.message : "응원을 불러오지 못했어요");
@@ -213,39 +198,6 @@ function ThreadState({
     target?.scrollIntoView?.({ block: "nearest" });
     target?.focus();
   }, [expanded, loading, detail, targetEncouragementId]);
-  useEffect(() => {
-    if (expanded && canCompose && composing && detail?.permissions.canEncourage)
-      root.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus();
-  }, [expanded, composing, canCompose, detail?.permissions.canEncourage]);
-  async function send(reaction: Reaction | null, message: string) {
-    if (lock.current)
-      throw new AppError("CONFLICT", "다른 응원을 처리 중이에요. 잠시 후 다시 시도해 주세요");
-    lock.current = true;
-    setSaving(true);
-    setError("");
-    setLoading(false);
-    callbacks.current.onBusyChange?.(true);
-    const version = ++generation.current;
-    try {
-      if (demo) demoSendEncouragement(occurrenceId, reaction, message);
-      else await sendEncouragement(occurrenceId, reaction, message);
-      const fresh = demo
-        ? demoGetDetail(occurrenceId)
-        : await getOccurrenceDetail({ occurrenceId });
-      if (!alive.current || version !== generation.current) return;
-      setDetail(fresh);
-      callbacks.current.onChanged?.(fresh);
-    } catch (cause) {
-      if (alive.current && version === generation.current) reportError(cause, false);
-      throw cause;
-    } finally {
-      lock.current = false;
-      if (alive.current) {
-        setSaving(false);
-        callbacks.current.onBusyChange?.(false);
-      }
-    }
-  }
   async function remove() {
     if (lock.current || deleting === null) return;
     lock.current = true;
@@ -262,9 +214,6 @@ function ThreadState({
       setDetail(fresh);
       showFeedback({ kind: "success", title: "응원을 삭제했어요" });
       setDeleting(null);
-      setComposing(false);
-      setComposerVersion((v) => v + 1);
-      callbacks.current.onDirtyChange?.(false);
       callbacks.current.onChanged?.(fresh);
       trigger.current?.focus();
     } catch (cause) {
@@ -277,12 +226,7 @@ function ThreadState({
       }
     }
   }
-  function openComposer() {
-    root.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus();
-    setExpanded(true);
-    setComposing(true);
-    if (!detail || stale.current) void load();
-  }
+
   const visible = detail?.encouragements.filter((item) => item.visibility === "visible") ?? [];
   return (
     <div ref={root} className={styles.thread}>
@@ -304,11 +248,6 @@ function ThreadState({
           응원 {currentSummary.count}개
           <ChevronDown size={16} aria-hidden="true" />
         </button>
-        {!forbidden && canCompose && (!detail || detail.permissions.canEncourage) ? (
-          <Button variant="ghost" onClick={openComposer}>
-            {currentSummary.myEncouragement ? "응원 수정" : "응원 남기기"}
-          </Button>
-        ) : null}
       </div>
       {!forbidden && currentSummary.count > 0 ? (
         currentSummary.latestMessage ? (
@@ -387,8 +326,8 @@ function ThreadState({
             ))
           : null}
         {deleting !== null ? (
-          <section className={styles.inlineConfirm} aria-label="응원 삭제 확인">
-            <p>보낸 응원을 삭제할까요? 작성 중인 내용도 함께 지워집니다.</p>
+          <section className={styles.inlineConfirm} aria-label="응원 삭제하기">
+            <p>보낸 응원을 삭제할까요?</p>
             <div className={styles.actions}>
               <Button
                 autoFocus
@@ -405,19 +344,10 @@ function ThreadState({
                 취소
               </Button>
               <Button variant="danger" loading={saving} onClick={() => void remove()}>
-                삭제 확인
+                삭제하기
               </Button>
             </div>
           </section>
-        ) : null}
-        {canCompose && composing && detail?.permissions.canEncourage && !forbidden ? (
-          <EncouragementComposer
-            key={composerVersion}
-            existing={detail.summary.myEncouragement}
-            busy={saving}
-            onSend={send}
-            onDirtyChange={(value) => callbacks.current.onDirtyChange?.(value)}
-          />
         ) : null}
       </div>
     </div>

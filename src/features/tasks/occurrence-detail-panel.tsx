@@ -401,7 +401,7 @@ export function OccurrenceDetailPanel({
                 <p>
                   ‘{detail.occurrence.title_snapshot}’
                   {detail.occurrence.recurrence_snapshot !== "none" ? " 반복 일정 전체를" : "을"}{" "}
-                  삭제할까요? 완료한 기록과 포인트는 남습니다.
+                  삭제할까요? 이미 완료한 기록과 포인트는 그대로 남아요.
                 </p>
                 <div className={styles.actions}>
                   <Button
@@ -440,11 +440,7 @@ export function OccurrenceDetailPanel({
               occurrenceId={detail.occurrence.id}
               summary={detail.summary}
               initialDetail={detail}
-              canCompose={false}
               targetEncouragementId={encouragementId}
-              onDirtyChange={(value) => {
-                dirty.current = value;
-              }}
               onBusyChange={(busy) => {
                 lock.current = busy;
               }}

@@ -15,7 +15,7 @@ export function getSupabaseClient(): SupabaseClient<Database> {
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) {
     throw new AppError(
       "SUPABASE_NOT_CONFIGURED",
-      "Supabase 연결 정보가 없습니다. .env.local을 먼저 설정해 주세요.",
+      "서비스 연결 설정을 확인하지 못했어요. 관리자에게 문의해 주세요.",
     );
   }
 

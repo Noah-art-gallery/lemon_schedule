@@ -90,7 +90,7 @@ export function TaskRowView({
           ) : null}
         </button>
       ) : null}
-      {summary && (summary.count > 0 || encouragementProps?.canCompose) ? (
+      {summary && summary.count > 0 ? (
         <div className={styles.rowThread}>
           <EncouragementThread
             {...encouragementProps}

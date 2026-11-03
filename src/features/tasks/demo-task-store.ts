@@ -74,7 +74,7 @@ export function demoDisconnectFriend(friendId: string) {
 }
 export function demoRespondRequest(id: number, accept: boolean) {
   const request = requests.find((item) => item.id === id && item.addressee_id === DEMO_OWNER_ID);
-  if (!request) throw new AppError("NOT_FOUND", "연결 요청을 찾지 못했어요");
+  if (!request) throw new AppError("NOT_FOUND", "친구 요청을 찾지 못했어요");
   if (accept) {
     connectedIds.add(request.requester_id);
     if (!demoFriends.some((friend) => friend.id === request.requester_id))
@@ -231,8 +231,12 @@ function seed() {
     due_time: id === 3 ? "19:30:00" : null,
     recurrence_snapshot: id === 1 ? "daily" : "none",
     status: done ? "completed" : "pending",
-    completed_at: done ? now : null,
-    first_completed_at: done ? now : null,
+    completed_at: done
+      ? new Date(Date.parse(now) - (id === 102 ? 7200000 : 1800000)).toISOString()
+      : null,
+    first_completed_at: done
+      ? new Date(Date.parse(now) - (id === 102 ? 7200000 : 1800000)).toISOString()
+      : null,
     reopened_at: null,
     created_at: now,
     updated_at: now,
@@ -246,7 +250,7 @@ function seed() {
     recurrence: row.recurrence_snapshot,
     recurrence_changed_at: now,
     deleted_at: row.id === 6 ? now : null,
-    created_at: now,
+    created_at: new Date(Date.parse(now) - (row.id === 103 ? 3600000 : 10800000)).toISOString(),
     updated_at: now,
   }));
   cheers = [
@@ -355,6 +359,12 @@ export function demoListSocial(friendId?: string): SocialActivityItem[] {
       summary: demoSummary(occurrence.id),
     }));
 }
+export function demoGetFriendTasks(friendId: string) {
+  seed();
+  return tasks
+    .filter((task) => connectedIds.has(friendId) && task.owner_id === friendId && !task.deleted_at)
+    .map((task) => ({ ...task }));
+}
 export function demoListFriend(friendId: string) {
   seed();
   return records
@@ -372,7 +382,7 @@ export function demoGetDetail(id: number): OccurrenceDetail {
   if (!occurrence) throw new AppError("NOT_FOUND", "할 일을 찾지 못했어요");
   const own = occurrence.owner_id === DEMO_OWNER_ID;
   if (!own && !connectedIds.has(occurrence.owner_id))
-    throw new AppError("FORBIDDEN", "연결이 해제되어 할 일을 볼 수 없어요");
+    throw new AppError("FORBIDDEN", "친구 관계가 해제되어 할 일을 볼 수 없어요");
   const taskDeleted = Boolean(tasks.find((task) => task.id === occurrence.task_id)?.deleted_at);
   if (taskDeleted && !own) throw new AppError("NOT_FOUND", "할 일을 찾지 못했어요");
   return {
