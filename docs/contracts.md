@@ -1,6 +1,10 @@
 # 서비스 계약
 
-서비스 오류는 코드와 사용자 메시지를 가진 `AppError`다. `UNAUTHENTICATED`, `FORBIDDEN`, `NOT_FOUND`, `INVALID_INPUT`, `CONFLICT`, `RATE_LIMITED`로 분류하며 공개 Supabase 설정 누락은 `SUPABASE_NOT_CONFIGURED`다. 가입은 이메일·비밀번호·닉네임·시간대에서 사용자 ID·프로필 ID·초대 코드·시간대를 반환하고, 로그인은 사용자 ID·세션을 반환한다. 프로필 수정은 생략 필드를 유지한다.
+`signInWithKakao(invite?)`는 현재 세션이 없을 때 웹 OAuth 이동을 시작하며 세션 자체를 반환하지 않는다. 로그인 완료는 기존 `AuthProvider`의 URL 세션 복원과 상태 전환으로 판단한다. 현재 세션이 있으면 `CONFLICT`, 세션 조회/시작 실패는 `INVALID_INPUT`(429는 `RATE_LIMITED`), 설정 누락은 `SUPABASE_NOT_CONFIGURED`다. 로그인 전 기기 푸시 등록 해제가 실패하면 OAuth를 시작하지 않는다. 콜백 오류는 원문 대신 재시도 안내를 표시한다. Capacitor에서는 `INVALID_INPUT`으로 웹 이용을 안내하며 네이티브 딥링크 인증은 아직 제공하지 않는다.
+
+카카오 가입은 이메일을 요구하지 않는다. 닉네임 제공 시 최대 40자로 초기화하며 미동의·누락이면 `레몬 친구`, 시간대 누락 시 `Asia/Seoul`을 사용한다. 이 초기화 경로는 서버 `raw_app_meta_data.provider`가 kakao일 때만 적용하며 사용자 metadata의 provider 값으로 선택할 수 없다. 이메일 가입의 닉네임·IANA 시간대 필수 검증은 유지한다. 로그인 반복 시 기존 프로필·시간대·펫을 다시 만들거나 초기화하지 않는다. 이메일 계정 연결·병합은 이 서비스 범위에 없다.
+
+서비스 오류는 코드와 사용자 메시지를 가진 `AppError`다. `UNAUTHENTICATED`, `FORBIDDEN`, `NOT_FOUND`, `INVALID_INPUT`, `CONFLICT`, `RATE_LIMITED`로 분류하며 공개 Supabase 설정 누락은 `SUPABASE_NOT_CONFIGURED`다. 앱 인증 서비스는 카카오 시작과 로그아웃만 제공하며 기존 이메일 `signUp`, `signIn` 서비스와 별도 가입 폼은 제거했다. 첫 카카오 로그인에서 계정·프로필·펫이 생성된다. 프로필 수정은 생략 필드를 유지한다.
 
 `ProfileAvatarKey`는 `lemon | cat | dog | rabbit | bear | fox | penguin | flower`이며 기본값은 `lemon`이다. `getProfileDetails(userId)`는 `{ displayName, avatarKey, timeZone, inviteCode, lemonPoints, petLevel }`을 반환한다. `updateProfile({ displayName?, timeZone?, avatarKey? })`는 `{ profileId, displayName, avatarKey, timeZone, updatedAt }`을 반환한다. 잘못된 이모지 키나 저장 실패·응답 형식 오류는 `INVALID_INPUT`이다. `update_my_profile(new_display_name, new_time_zone, new_avatar_key)` RPC의 세 인자는 모두 기본값 `null`로 기존 값을 유지하므로 기존 두 인자 호출도 유효하다. 직접 SQL 호출의 잘못된 이모지 키는 `INVALID_AVATAR_KEY`로 거부한다.
 

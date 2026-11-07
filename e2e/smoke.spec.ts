@@ -44,12 +44,12 @@ test("추가와 완료 후 재완료는 포인트를 다시 지급하지 않는�
 
 test("간결한 인증 화면에서 초대 코드를 이어간다", async ({ page }) => {
   await page.goto("/signup/?invite=LEMON1234");
-  await expect(page.getByRole("heading", { name: "회원가입" })).toBeVisible();
-  await expect(page.getByLabel("시간대")).toHaveCount(0);
-  await expect(page.getByText("하나씩 해내고, 서로 응원해요")).toBeVisible();
-  await page.getByRole("link", { name: "로그인", exact: true }).click();
   await expect(page).toHaveURL(/\/login\/\?invite=LEMON1234/);
   await expect(page.getByRole("heading", { name: "로그인" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "카카오로 시작하기" })).toBeVisible();
+  await expect(page.getByLabel("이메일")).toHaveCount(0);
+  await expect(page.getByLabel("비밀번호")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "회원가입" })).toHaveCount(0);
   await page.goto("/friends/?invite=LEMON1234");
   await expect(page.getByRole("textbox", { name: "친구 초대 코드" })).toHaveValue("LEMON1234");
 });

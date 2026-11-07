@@ -9,6 +9,22 @@ const migrations = readdirSync(migrationDirectory)
 
 assert.ok(migrations.length > 0, "Supabase migration is required");
 
+const kakaoSignup = readFileSync(
+  join(migrationDirectory, "20261107053012_kakao_signup_profiles.sql"),
+  "utf8",
+);
+assert.match(
+  kakaoSignup,
+  /raw_app_meta_data ->> 'provider' = 'kakao'/,
+  "only server provider metadata selects Kakao initialization",
+);
+assert.match(
+  kakaoSignup,
+  /revoke all on function private\.handle_new_user\(\) from public, anon, authenticated/,
+  "signup trigger must remain private",
+);
+assert.doesNotMatch(kakaoSignup, /grant /i, "Kakao signup does not grant new table or RPC access");
+
 const sql = migrations
   .map((name) => readFileSync(join(migrationDirectory, name), "utf8"))
   .join("\n")
