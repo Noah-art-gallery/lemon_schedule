@@ -4,7 +4,9 @@
 
 로그인 화면은 `카카오로 시작하기` 버튼 하나이며 첫 인증에서 가입도 함께 처리한다. 이메일·비밀번호 폼, 별도 회원가입 링크와 이메일 인증 서비스는 제거했다. 기존 `/signup/?invite=...`는 `/login/?invite=...`으로 보내고 새 프로필 초대 링크도 로그인 주소를 사용한다. 로컬 `auth.email.enable_signup`은 false다. 개발 데모에서는 실제 카카오 버튼을 비활성화한다.
 
-운영 Email provider는 **카카오 전용 화면 배포를 확인한 뒤** 끈다. 기존 운영 사이트가 이메일 폼인 동안 먼저 끄면 로그인할 수 없으므로 이번 로컬 변경 단계에서는 운영 provider를 바꾸지 않았다. `Allow new users to sign up` 전체 옵션은 켜 둬야 카카오 첫 가입이 가능하다. Email provider를 끄더라도 기존 사용자·할 일·펫·현재 세션을 삭제하지 않는다. 과거 이메일 가입 안내는 아래에 당시 운영 기록으로 남아 있다. 이메일 API로 fixture를 만드는 `RUN_SUPABASE_INTEGRATION` 검사는 이메일 가입을 허용한 전용 테스트 프로젝트에서만 실행하며 카카오 전용 운영 프로젝트에 적용하지 않는다.
+2026-11-07 사용자 승인 후 카카오 전용 화면을 Vercel production에 배포하고 실제 로그인 성공을 확인한 뒤 운영 Email provider를 껐다. 공개 Auth 설정은 email=false, kakao=true이며 비밀번호 로그인은 HTTP 422, 이메일 가입은 HTTP 400의 `email_provider_disabled`로 거부됐다. 이후에도 실제 카카오 재로그인과 초대 코드 목적지 이동이 성공했다. `Allow new users to sign up` 전체 옵션은 카카오 첫 가입을 위해 유지한다. 기존 사용자·할 일·펫·현재 세션은 삭제하지 않았다. 이메일 API로 fixture를 만드는 `RUN_SUPABASE_INTEGRATION` 검사는 이메일 가입을 허용한 전용 테스트 프로젝트에서만 실행한다.
+
+최초 운영 전환 deployment는 `dpl_7XFXnyuXQiR2MYmJxybvZui136nv`이며 코드 commit `39424d0`을 격리된 clean worktree에서 업로드했다. [운영 사이트](https://lemon-schedule.vercel.app/)에서 390px 로그인 화면의 이메일 입력·회원가입 링크 부재, `/signup/?invite=...`의 로그인 이동, 카카오 로그인 뒤 초대 폼의 코드 보존을 확인했다. 기존 미적용 `20261024083537_friend_timeline.sql`도 먼저 운영에 적용하고 원격 계약 검사 14개를 rollback으로 통과했다. 원격 migration 이력은 로컬 17개와 일치한다.
 
 ## 카카오 웹 로그인 (2026-11-07)
 
@@ -14,7 +16,7 @@
 
 Supabase Site URL은 `https://lemon-schedule.vercel.app/`이다. 허용된 로그인 복귀 주소는 `https://lemon-schedule.vercel.app/login/**`, `http://localhost:3000/login/**`, 검증 서버용 `http://127.0.0.1:3010/login/**`이다. 웹 클라이언트는 현재 origin의 `/login/`으로 돌아와 기존 URL 세션 복원을 사용한다. 초대 코드가 있으면 함께 유지한다. Next 서버 callback은 추가하지 않아 정적 export를 유지한다.
 
-운영 DB에 `20261107053012_kakao_signup_profiles.sql`을 적용하고 같은 버전으로 로컬 파일명을 맞췄다. 변경은 서버 app metadata의 provider가 kakao인 신규 계정의 닉네임·기본 시간대 초기화뿐이며 기존 이메일 가입 입력 검증·RLS·RPC 권한을 유지한다. 카카오 신규 가입의 기본 시간대는 `Asia/Seoul`이며 내 정보에서 바꿀 수 있다. 기존 이메일 계정과 자동 병합하지 않는다. 기존 미적용 친구 타임라인 migration은 이번 인증 변경과 독립적이며 그대로 미적용 상태다.
+운영 DB에 `20261107053012_kakao_signup_profiles.sql`을 적용하고 같은 버전으로 로컬 파일명을 맞췄다. 변경은 서버 app metadata의 provider가 kakao인 신규 계정의 닉네임·기본 시간대 초기화뿐이며 기존 이메일 가입 입력 검증·RLS·RPC 권한을 유지한다. 카카오 신규 가입의 기본 시간대는 `Asia/Seoul`이며 내 정보에서 바꿀 수 있다. 기존 이메일 계정과 자동 병합하지 않는다. 운영 배포 준비 중 친구 타임라인 migration도 별도로 적용·검증했다.
 
 실제 계정의 첫 로그인과 정적 `out` 서버에서 로그아웃→재로그인→홈 진입을 확인했다. 카카오 계정은 이메일 없이 생성됐고 프로필·펫은 각각 1개다. 이 브라우저 검증은 로컬 웹 산출물과 운영 Auth/DB를 사용했으며 Vercel 코드 배포·네이티브 앱 검증은 포함하지 않는다.
 
