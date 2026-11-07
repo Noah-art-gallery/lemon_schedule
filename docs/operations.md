@@ -1,5 +1,27 @@
 # 실행과 배포
 
+## 카카오 전용 화면 전환 (2026-11-07)
+
+로그인 화면은 `카카오로 시작하기` 버튼 하나이며 첫 인증에서 가입도 함께 처리한다. 이메일·비밀번호 폼, 별도 회원가입 링크와 이메일 인증 서비스는 제거했다. 기존 `/signup/?invite=...`는 `/login/?invite=...`으로 보내고 새 프로필 초대 링크도 로그인 주소를 사용한다. 로컬 `auth.email.enable_signup`은 false다. 개발 데모에서는 실제 카카오 버튼을 비활성화한다.
+
+2026-11-07 사용자 승인 후 카카오 전용 화면을 Vercel production에 배포하고 실제 로그인 성공을 확인한 뒤 운영 Email provider를 껐다. 공개 Auth 설정은 email=false, kakao=true이며 비밀번호 로그인은 HTTP 422, 이메일 가입은 HTTP 400의 `email_provider_disabled`로 거부됐다. 이후에도 실제 카카오 재로그인과 초대 코드 목적지 이동이 성공했다. `Allow new users to sign up` 전체 옵션은 카카오 첫 가입을 위해 유지한다. 기존 사용자·할 일·펫·현재 세션은 삭제하지 않았다. 이메일 API로 fixture를 만드는 `RUN_SUPABASE_INTEGRATION` 검사는 이메일 가입을 허용한 전용 테스트 프로젝트에서만 실행한다.
+
+최초 운영 전환 deployment는 `dpl_7XFXnyuXQiR2MYmJxybvZui136nv`이며 코드 commit `39424d0`을 격리된 clean worktree에서 업로드했다. [운영 사이트](https://lemon-schedule.vercel.app/)에서 390px 로그인 화면의 이메일 입력·회원가입 링크 부재, `/signup/?invite=...`의 로그인 이동, 카카오 로그인 뒤 초대 폼의 코드 보존을 확인했다. 기존 미적용 `20261024083537_friend_timeline.sql`도 먼저 운영에 적용하고 원격 계약 검사 14개를 rollback으로 통과했다. 원격 migration 이력은 로컬 17개와 일치한다.
+
+## 카카오 웹 로그인 (2026-11-07)
+
+카카오 앱은 `레몬스케줄` (앱 ID `1640892`), 회사명은 `레몬초콜릿스튜디오`, 카테고리는 생산성/도구다. 카카오 로그인을 활성화하고 REST API 키의 로그인 리다이렉트 URI를 `https://jthltqvcoezawoplaxkd.supabase.co/auth/v1/callback`으로 등록했다. 기본 활성화된 로그인 Client Secret과 REST API 키는 Supabase Kakao provider에 저장했으며 저장소·앱 환경 변수에 넣지 않는다.
+
+닉네임만 선택 동의로 요청하고 이메일·사진·친구목록은 요청하지 않는다. Supabase의 Kakao provider와 **Allow users without an email**을 켰다. Supabase는 기본 scope에 이메일·사진을 포함하므로 `signInWithOAuth`의 `scopes`를 사용하면 덧붙여진다. `queryParams: { scope: "profile_nickname" }`으로 최종 scope를 지정한다. 실제 브라우저에서 이 차이로 발생한 KOE205를 재현하고 수정 후 로그인 성공을 확인했다. [공식 연결 안내](https://supabase.com/docs/guides/auth/social-sign-in/auth-kakao), [인증 리다이렉트 구현](https://github.com/supabase/auth/blob/master/internal/api/external.go).
+
+Supabase Site URL은 `https://lemon-schedule.vercel.app/`이다. 허용된 로그인 복귀 주소는 `https://lemon-schedule.vercel.app/login/**`, `http://localhost:3000/login/**`, 검증 서버용 `http://127.0.0.1:3010/login/**`이다. 웹 클라이언트는 현재 origin의 `/login/`으로 돌아와 기존 URL 세션 복원을 사용한다. 초대 코드가 있으면 함께 유지한다. Next 서버 callback은 추가하지 않아 정적 export를 유지한다.
+
+운영 DB에 `20261107053012_kakao_signup_profiles.sql`을 적용하고 같은 버전으로 로컬 파일명을 맞췄다. 변경은 서버 app metadata의 provider가 kakao인 신규 계정의 닉네임·기본 시간대 초기화뿐이며 기존 이메일 가입 입력 검증·RLS·RPC 권한을 유지한다. 카카오 신규 가입의 기본 시간대는 `Asia/Seoul`이며 내 정보에서 바꿀 수 있다. 기존 이메일 계정과 자동 병합하지 않는다. 운영 배포 준비 중 친구 타임라인 migration도 별도로 적용·검증했다.
+
+실제 계정의 첫 로그인과 정적 `out` 서버에서 로그아웃→재로그인→홈 진입을 확인했다. 카카오 계정은 이메일 없이 생성됐고 프로필·펫은 각각 1개다. 이 브라우저 검증은 로컬 웹 산출물과 운영 Auth/DB를 사용했으며 Vercel 코드 배포·네이티브 앱 검증은 포함하지 않는다.
+
+## 설치와 로컬 실행
+
 Node.js 22 이상과 npm을 준비한 뒤 저장소 루트에서 `npm ci`를 실행한다. `.env.local`에 `.env.example`의 공개 Supabase URL·publishable key를 넣으면 실제 계정 모드가 되고, 둘 다 비어 있는 비프로덕션 환경에서는 `npm run dev:demo`로 샘플 화면을 확인한다.
 
 현재 앱은 서울 리전의 전용 `lemontodolist` 프로젝트 (`jthltqvcoezawoplaxkd`)를 사용한다. 공개 URL은 `https://jthltqvcoezawoplaxkd.supabase.co`이고 `.env.local`은 Git에서 제외되므로 다른 개발 환경에서는 공개 키를 따로 설정한다. 2026-10-17 사용자 승인 후 미적용 migration 다섯 개(`20261012120000`~`20261012160000`)를 순서대로 적용해 원격 이력과 로컬 15개 파일을 일치시켰다. MCP가 생성한 적용 시각 버전은 각 성공 직후 해당 로컬 파일 버전으로 이력 메타데이터만 맞췄으며 SQL 파일은 변경하지 않았다. 차단 데이터는 0개였고 기존 소유자 숨김 응원 1개는 승인대로 visible로 복원됐다. 직접 소식 발송 함수 `send-completion-push`는 최신 소스로 배포해 ACTIVE v5를 확인했다. 기존 웹훅 인증과 secrets는 유지했다. CLI 접근 오류 대신 연결된 Supabase 도구로 적용했다.
@@ -7,7 +29,7 @@ Node.js 22 이상과 npm을 준비한 뒤 저장소 루트에서 `npm ci`를 실
 원격 pgTAP는 001 보안 18개, 004 정책 제거 7개, 006 하루 응원 34개로 총 59개를 통과했다. 각 트랜잭션은 rollback했으며 검사용 UUID 계정이 0개임을 확인했다. 002 행동 검사는 빈 DB를 전제로 모든 기존 응원에서 알림을 준비하는 구문이 운영 알림의 unique key와 충돌해 전체 롤백됐으므로 통과로 기록하지 않는다. 003 웹훅·005 프로필 전체 검사는 운영 secrets·기존 데이터에 대한 전역 fixture 구문 때문에 원격에서는 실행하지 않았다. 전체 244개 검사는 기존 격리된 로컬 DB 기록이다. Security Advisor의 인증 사용자용 SECURITY DEFINER RPC와 서버 전용 발송 장부의 정책 부재는 의도한 경계이며, 유출 비밀번호 보호 비활성 경고는 별도 운영 항목이다.
 2026-10-03 Android Firebase 프로젝트 `lemon-todo-69959`의 패키지 `com.lemonschedule.app`을 확인해 `android/app/google-services.json`을 저장했다. 이 파일은 Git에서 제외되므로 다른 개발 환경에서는 별도로 준비한다. 서비스 계정 원본은 저장소·앱에 복사하지 않고 `FCM_PROJECT_ID`, `FCM_CLIENT_EMAIL`, `FCM_PRIVATE_KEY`만 원격 Edge Function secrets에 등록해 원본 값과 원격 해시의 일치를 확인했다. 64자 무작위 `PUSH_WEBHOOK_SECRET`도 원격에 등록해 해시 일치를 확인했다. 비밀 헤더가 없는 요청은 401, 올바른 헤더와 잘못된 이벤트는 400 `INVALID_EVENT`로 검증했으며 비밀값은 앱·저장소·채팅에 남기지 않았다. Database Webhook 연결도 완료했다. `private.enqueue_completion_push()`가 `notifications` INSERT마다 Vault 설정을 읽어 pg_net으로 ID만 비동기 POST한다. 실제 DB INSERT 스모크는 HTTP 200 `NOT_COMPLETION`을 확인했고 테스트 계정·알림은 정리했다. APNs 자격과 실제 휴대폰 푸시 수신 검증은 남아 있다.
 
-현재 회원가입은 이메일·비밀번호 입력 후 즉시 세션을 받는 계약이다. 2026-10-03 사용자가 [프로젝트 인증 설정](https://supabase.com/dashboard/project/jthltqvcoezawoplaxkd/auth/providers)의 Confirm email을 끈 뒤 실제 가입·로그인 검증을 완료했다. 새 프로젝트도 즉시 가입 계약을 사용할 경우 같은 옵션을 끈다. 이메일 인증을 유지하려면 가입 대기·확인 흐름을 먼저 추가한다. Supabase 기본 가입·로그인 설정은 로컬 `config.toml`만 수정해도 클라우드에 자동 반영되지 않는다.
+2026-10-03 당시 회원가입은 이메일·비밀번호 입력 후 즉시 세션을 받는 계약이었다. 사용자가 [프로젝트 인증 설정](https://supabase.com/dashboard/project/jthltqvcoezawoplaxkd/auth/providers)의 Confirm email을 끈 뒤 실제 가입·로그인 검증을 완료했다. 현재 클라이언트는 위의 카카오 전용 계약으로 전환했다. Supabase 기본 가입·로그인 설정은 로컬 `config.toml`만 수정해도 클라우드에 자동 반영되지 않는다.
 
 2026-10-03 Windows 환경의 실제 통합 검사는 PowerShell에서 `$env:RUN_SUPABASE_INTEGRATION = '1'`을 설정한 뒤 `node --env-file=.env.local node_modules/vitest/vitest.mjs run src/lib/supabase/supabase.integration.test.ts --environment node`로 실행했다. 이 검사는 실제 Auth 테스트 계정을 생성하므로 완료 후 해당 검사에서 생성된 UUID·이메일을 확인하고 전역 로그아웃과 계정 정리를 수행한다. 사용자 계정이나 생성 시점만으로 넓게 삭제하지 않는다.
 

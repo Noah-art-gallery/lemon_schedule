@@ -187,7 +187,7 @@ export function ProfileScreen() {
     dismissFeedback();
     try {
       await navigator.clipboard.writeText(
-        `${profile.inviteCode}\n${window.location.origin}/signup/?invite=${encodeURIComponent(profile.inviteCode)}`,
+        `${profile.inviteCode}\n${window.location.origin}/login/?invite=${encodeURIComponent(profile.inviteCode)}`,
       );
       showFeedback({ kind: "success", title: "초대 코드와 링크를 복사했어요" });
     } catch {

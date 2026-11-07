@@ -1,21 +1,18 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Brand } from "@/components/layout/brand";
 import { Button } from "@/components/ui/button";
-import { Field } from "@/components/ui/field";
 import { AppError } from "@/lib/errors";
-import { getDeviceTimeZone } from "@/lib/time";
 import { disableNativePush } from "@/features/push/push-service";
 import { useAuth } from "./auth-provider";
 
-import { signIn, signUp } from "./auth-service";
+import { signInWithKakao } from "./auth-service";
 import styles from "./auth-form.module.css";
 
-export function AuthForm({ mode }: { mode: "login" | "signup" }) {
+export function AuthForm() {
   const router = useRouter();
   const { status } = useAuth();
   const pending = useRef(false);
@@ -23,42 +20,50 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (status === "authenticated") router.replace("/");
+    if (status === "authenticated") {
+      const invite = new URLSearchParams(window.location.search).get("invite")?.trim();
+      router.replace(invite ? `/friends/?invite=${encodeURIComponent(invite)}` : "/");
+    } else if (window.location.pathname.replace(/\/$/, "") === "/signup") {
+      router.replace(`/login/${window.location.search}${window.location.hash}`);
+    }
   }, [router, status]);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (pending.current || (status !== "unauthenticated" && status !== "demo")) return;
+  useEffect(() => {
+    let active = true;
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const query = new URLSearchParams(window.location.search);
+    if (hash.has("error") || query.has("error")) {
+      queueMicrotask(() => {
+        if (!active) return;
+        setError("카카오 로그인을 완료하지 못했어요. 다시 시도해 주세요.");
+        const clean = new URL(window.location.href);
+        clean.hash = "";
+        for (const key of ["error", "error_code", "error_description"])
+          clean.searchParams.delete(key);
+        window.history.replaceState(null, "", clean.pathname + clean.search);
+      });
+    }
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function kakaoLogin() {
+    if (pending.current || status !== "unauthenticated") return;
     pending.current = true;
     setLoading(true);
     setError("");
-    const data = new FormData(event.currentTarget);
     try {
       await disableNativePush();
-      if (mode === "signup") {
-        await signUp({
-          email: String(data.get("email") ?? ""),
-          password: String(data.get("password") ?? ""),
-          displayName: String(data.get("displayName") ?? ""),
-          timeZone: getDeviceTimeZone(),
-        });
-      } else {
-        await signIn({
-          email: String(data.get("email") ?? ""),
-          password: String(data.get("password") ?? ""),
-        });
-      }
-      const invite = new URLSearchParams(window.location.search).get("invite")?.trim();
-      router.replace(invite ? `/friends/?invite=${encodeURIComponent(invite)}` : "/");
+      await signInWithKakao(new URLSearchParams(window.location.search).get("invite") ?? undefined);
     } catch (cause) {
-      setError(cause instanceof AppError ? cause.message : "입력값을 다시 확인해 주세요.");
+      setError(cause instanceof AppError ? cause.message : "카카오 로그인을 시작하지 못했어요.");
     } finally {
       pending.current = false;
       setLoading(false);
     }
   }
 
-  const signup = mode === "signup";
   if (status === "loading" || status === "authenticated") {
     return (
       <main className="route-loading" aria-live="polite">
@@ -71,48 +76,26 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
       <section className={styles.card} aria-labelledby="auth-title">
         <Brand />
         <div className={styles.heading}>
-          <h1 id="auth-title">{signup ? "회원가입" : "로그인"}</h1>
+          <h1 id="auth-title">로그인</h1>
           <p>하나씩 해내고, 서로 응원해요</p>
           <p>친구·가족과 할 일을 공유하고, 하나씩 해내며 나만의 펫을 키워요.</p>
         </div>
-        <form className="form-stack" onSubmit={submit}>
-          {signup ? <Field label="닉네임" name="displayName" maxLength={40} required /> : null}
-          <Field label="이메일" name="email" type="email" autoComplete="email" required />
-          <Field
-            label="비밀번호"
-            name="password"
-            type="password"
-            minLength={8}
-            hint={signup ? "8자 이상" : undefined}
-            autoComplete={signup ? "new-password" : "current-password"}
-            required
-          />
-          {error ? (
-            <p className="form-error" role="alert">
-              {error}
-            </p>
-          ) : null}
-          <Button type="submit" size="lg" fullWidth loading={loading}>
-            {signup ? "회원가입" : "로그인"}
-          </Button>
-        </form>
-        <p className={styles.switch}>
-          {signup ? "이미 계정이 있나요?" : "처음 오셨나요?"}{" "}
-          <Link
-            href={signup ? "/login" : "/signup"}
-            onClick={(event) => {
-              const invite = new URLSearchParams(window.location.search).get("invite")?.trim();
-              if (invite) {
-                event.preventDefault();
-                router.push(
-                  `${signup ? "/login" : "/signup"}?invite=${encodeURIComponent(invite)}`,
-                );
-              }
-            }}
-          >
-            {signup ? "로그인" : "회원가입"}
-          </Link>
-        </p>
+        {error ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <Button
+          className={styles.kakao}
+          size="lg"
+          fullWidth
+          loading={loading}
+          disabled={status === "demo"}
+          onClick={() => void kakaoLogin()}
+        >
+          카카오로 시작하기
+        </Button>
+        <p className={styles.notice}>처음이라면 카카오 로그인 후 바로 시작할 수 있어요.</p>
       </section>
     </main>
   );

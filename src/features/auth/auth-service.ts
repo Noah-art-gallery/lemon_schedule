@@ -1,49 +1,9 @@
-import type { AuthError, Session } from "@supabase/supabase-js";
+import { Capacitor } from "@capacitor/core";
 import { z } from "zod";
 
 import { withPushAccountCleanup } from "@/features/push/push-service";
 import { AppError } from "@/lib/errors";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { isValidTimeZone } from "@/lib/time";
-
-export const signUpSchema = z.object({
-  email: z.email("올바른 이메일을 입력해 주세요."),
-  password: z.string().min(8, "비밀번호는 8자 이상이어야 해요."),
-  displayName: z
-    .string()
-    .trim()
-    .min(1, "닉네임을 입력해 주세요.")
-    .max(40, "닉네임은 40자 이하로 입력해 주세요."),
-  timeZone: z
-    .string()
-    .trim()
-    .refine(isValidTimeZone, "기기의 시간대를 확인한 뒤 다시 시도해 주세요."),
-});
-
-export const signInSchema = z.object({
-  email: z.email("올바른 이메일을 입력해 주세요."),
-  password: z.string().min(1, "비밀번호를 입력해 주세요."),
-});
-
-export function authFailure(error: Pick<AuthError, "message" | "status">): AppError {
-  const duplicate = /already registered|already been registered/i.test(error.message);
-  const rateLimited = error.status === 429;
-  return new AppError(
-    rateLimited ? "RATE_LIMITED" : duplicate ? "CONFLICT" : "INVALID_INPUT",
-    rateLimited
-      ? "요청이 너무 많아요. 잠시 뒤 다시 시도해 주세요."
-      : duplicate
-        ? "이미 가입된 이메일이에요."
-        : "이메일 또는 비밀번호를 확인해 주세요.",
-  );
-}
-
-export interface SignUpResult {
-  userId: string;
-  profileId: string;
-  inviteCode: string;
-  timeZone: string;
-}
 
 function validate<T>(schema: z.ZodType<T>, input: unknown): T {
   const result = schema.safeParse(input);
@@ -56,50 +16,39 @@ function validate<T>(schema: z.ZodType<T>, input: unknown): T {
   return result.data;
 }
 
-export async function signUp(input: z.input<typeof signUpSchema>): Promise<SignUpResult> {
-  const values = validate(signUpSchema, input);
-  const { data, error } = await getSupabaseClient().auth.signUp({
-    email: values.email,
-    password: values.password,
-    options: {
-      data: { display_name: values.displayName, time_zone: values.timeZone },
-    },
-  });
-
-  if (error) throw authFailure(error);
-  if (!data.user || !data.session) {
-    throw new AppError("INVALID_INPUT", "가입한 이메일에서 인증 메일을 확인한 뒤 로그인해 주세요.");
-  }
-  const { data: profile, error: profileError } = await getSupabaseClient()
-    .from("profile_private")
-    .select("invite_code, time_zone")
-    .eq("user_id", data.user.id)
-    .single();
-  if (profileError || !profile) {
-    throw new AppError("INVALID_INPUT", "가입 프로필을 불러오지 못했어요.");
-  }
-  return {
-    userId: data.user.id,
-    profileId: data.user.id,
-    inviteCode: profile.invite_code,
-    timeZone: profile.time_zone,
-  };
-}
-
-export async function signIn(
-  input: z.input<typeof signInSchema>,
-): Promise<{ userId: string; session: Session }> {
-  const values = validate(signInSchema, input);
-  const { data, error } = await getSupabaseClient().auth.signInWithPassword(values);
-  if (error || !data.user || !data.session) {
-    throw authFailure(error ?? ({ message: "Login failed" } as AuthError));
-  }
-  return { userId: data.user.id, session: data.session };
-}
-
 export async function signOut(): Promise<void> {
   await withPushAccountCleanup(async () => {
     const { error } = await getSupabaseClient().auth.signOut();
     if (error) throw new AppError("INVALID_INPUT", "로그아웃하지 못했어요. 다시 시도해 주세요.");
   });
+}
+
+export async function signInWithKakao(invite?: string): Promise<void> {
+  const inviteCode = validate(
+    z.string().trim().max(128, "초대 코드를 확인해 주세요.").optional(),
+    invite,
+  );
+  if (Capacitor.isNativePlatform()) {
+    throw new AppError("INVALID_INPUT", "카카오 로그인은 웹에서 먼저 이용해 주세요.");
+  }
+  const client = getSupabaseClient();
+  const { data: current, error: sessionError } = await client.auth.getSession();
+  if (sessionError)
+    throw new AppError("INVALID_INPUT", "계정을 확인하지 못했어요. 다시 시도해 주세요.");
+  if (current.session)
+    throw new AppError("CONFLICT", "다른 계정으로 로그인하려면 먼저 로그아웃해 주세요.");
+  const redirect = new URL("/login/", window.location.origin);
+  if (inviteCode) redirect.searchParams.set("invite", inviteCode);
+  const { error } = await client.auth.signInWithOAuth({
+    provider: "kakao",
+    // `scopes` appends to Supabase's Kakao defaults (which include email/photo).
+    // Override the provider's OAuth scope to request only the nickname we use.
+    options: { redirectTo: redirect.toString(), queryParams: { scope: "profile_nickname" } },
+  });
+  if (error) {
+    throw new AppError(
+      error.status === 429 ? "RATE_LIMITED" : "INVALID_INPUT",
+      "카카오 로그인을 시작하지 못했어요. 잠시 뒤 다시 시도해 주세요.",
+    );
+  }
 }
