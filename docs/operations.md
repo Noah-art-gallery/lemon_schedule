@@ -8,6 +8,8 @@
 
 운영 Edge Function v1에서 정상 요청 200, 외부 Origin 403, 다른 사이트 복귀 주소 400, 잘못된 키 401을 확인했다. 로컬 실제 계정에서 SDK 2.8.4 초기화·throughTalk=true·닉네임 scope·Supabase state 전달 후 홈 복귀가 성공했다. 이 PC 브라우저 검증은 Android/iOS에 설치된 카카오톡 앱의 실제 실행·복귀 검증을 대체하지 않는다. [공식 간편로그인 문서](https://developers.kakao.com/docs/latest/ko/kakaologin/js), [SDK 레퍼런스](https://developers.kakao.com/sdk/reference/js/release/Kakao.Auth.html#.authorize).
 
+사용자 요청에 따라 코드 `ec2407f`를 Vercel production에 배포했다(`dpl_FrJzzuLu8SQa8TQFPsr1t5oxWcks`). 운영 브라우저에서도 SDK를 사용한 실제 로그인 왕복이 성공했고, 로컬에서는 SDK 실행 실패 후 기존 REST 로그인 성공도 확인했다. Supabase Email provider 비활성화는 유지한다. Preview 도메인은 카카오 JS 도메인 목록에 포함하지 않으므로 공개 JavaScript 키가 없는 preview는 기존 REST fallback을 사용한다.
+
 ## 카카오 전용 화면 전환 (2026-11-07)
 
 로그인 화면은 `카카오로 시작하기` 버튼 하나이며 첫 인증에서 가입도 함께 처리한다. 이메일·비밀번호 폼, 별도 회원가입 링크와 이메일 인증 서비스는 제거했다. 기존 `/signup/?invite=...`는 `/login/?invite=...`으로 보내고 새 프로필 초대 링크도 로그인 주소를 사용한다. 로컬 `auth.email.enable_signup`은 false다. 개발 데모에서는 실제 카카오 버튼을 비활성화한다.
