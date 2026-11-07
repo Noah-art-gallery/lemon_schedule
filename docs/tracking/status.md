@@ -10,6 +10,8 @@ Kakao JavaScript SDK 2.8.4와 공개 JavaScript 키·도메인·Supabase callbac
 
 전체 format·lint·일반/Edge 타입·SQL 계약·정적 빌드 통과. 단위 검사 275개 통과·외부 계정 의존성 2개 건너뜀이다. 변경된 인증 및 공개 Edge Function의 계약 검사를 포함하며 데이터베이스 migration 변경은 없다.
 
+운영 배포 후 사용자가 실제 휴대폰에서 카카오톡으로 이동해 로그인하고 왼쪽 위 돌아가기로 레몬에 복귀했다고 확인했다. 기기·OS·브라우저 종류는 제공되지 않았으며 자동 복귀·취소·미설치 기기 동작까지 검증했다는 의미는 아니다.
+
 ## 2026-11-07 카카오 전용 운영 배포 완료
 
 사용자 승인 후 카카오 전용 클라이언트를 production에 배포하고 `https://lemon-schedule.vercel.app/`에 연결했다. 실제 카카오 로그인 성공을 확인한 뒤 Supabase Email provider를 껐다. 공개 설정 email=false/kakao=true, 비밀번호 로그인 HTTP 422·이메일 가입 HTTP 400의 `email_provider_disabled` 거부, 차단 후 실제 카카오 재로그인 성공을 확인했다. 운영 390px 화면에서 입력창·회원가입 링크가 없으며 예전 가입 URL→로그인→카카오→친구 초대 코드 보존을 검증했다. 기존 계정 데이터는 삭제하지 않았다. 반복 로그인 뒤 카카오 계정·프로필·펫 각 1개를 유지했고 이메일 API 검증용 계정은 생성되지 않았다.

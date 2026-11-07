@@ -2,7 +2,7 @@
 
 ## 카카오톡 설치 기기의 앱 전환 확인 (2026-11-07)
 
-공식 JavaScript SDK의 throughTalk=true로 앱 우선 인증을 연결하고, Supabase state 중계·콜백 토큰 교환·PC 웹 fallback의 실제 로그인 성공을 확인했다. 현재 자동화 환경은 Windows PC이므로 카카오톡이 설치된 Android Chrome/iOS Safari에서 앱 실행→동의→원래 웹페이지 복귀를 실제로 확인하지 못했다. 이 검사는 모바일 브라우저 UA나 화면 크기 에뮬레이션으로 대체하지 않는다. 배포 후 해당 휴대폰에서 앱 전환 및 취소·미설치 웹 로그인을 확인해야 한다.
+공식 JavaScript SDK의 throughTalk=true로 앱 우선 인증을 연결하고, Supabase state 중계·콜백 토큰 교환·PC 웹 fallback의 실제 로그인 성공을 확인했다. 운영 배포 후 사용자가 휴대폰에서 카카오톡 인증 후 왼쪽 위 돌아가기로 레몬에 복귀했다고 보고했다. 자동화 환경은 Windows PC이며 사용자 기기·OS·브라우저 종류는 미확인이다. Android Chrome/iOS Safari 각각의 자동 복귀·취소·미설치 기기 동작은 추가 확인이 필요하며, 모바일 UA나 화면 크기 에뮬레이션으로 대체하지 않는다.
 
 ## 카카오 네이티브 로그인과 외부 연결 해제
 
