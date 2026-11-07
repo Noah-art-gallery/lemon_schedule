@@ -13,7 +13,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
-    "typecheck:edge": "tsc --ignoreConfig --noEmit --target ES2022 --lib ES2022,DOM --module esnext --moduleResolution bundler --skipLibCheck --strict supabase/functions/send-completion-push/index.ts",
+    "typecheck:edge": "tsc --ignoreConfig --noEmit --target ES2022 --lib ES2022,DOM,DOM.Iterable --module esnext --moduleResolution bundler --skipLibCheck --strict supabase/functions/send-completion-push/index.ts supabase/functions/start-kakao-login/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:db-contract": "node scripts/check-sql-contract.mjs",

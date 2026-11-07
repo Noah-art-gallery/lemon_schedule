@@ -9,7 +9,7 @@ import { AppError } from "@/lib/errors";
 import { disableNativePush } from "@/features/push/push-service";
 import { useAuth } from "./auth-provider";
 
-import { signInWithKakao } from "./auth-service";
+import { signInWithKakao, warmKakaoLogin } from "./auth-service";
 import styles from "./auth-form.module.css";
 
 export function AuthForm() {
@@ -18,6 +18,18 @@ export function AuthForm() {
   const pending = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (status !== "unauthenticated") return;
+    const warm = () => {
+      void warmKakaoLogin(
+        new URLSearchParams(window.location.search).get("invite") ?? undefined,
+      ).catch(() => {});
+    };
+    warm();
+    window.addEventListener("focus", warm);
+    return () => window.removeEventListener("focus", warm);
+  }, [status]);
 
   useEffect(() => {
     if (status === "authenticated") {
