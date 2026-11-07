@@ -1,5 +1,7 @@
 # 서비스 계약
 
+카카오 JavaScript 키가 설정되면 `signInWithKakao`는 SDK 간편로그인을 우선 사용하고 실패 시 기존 REST OAuth로 전환한다. `warmKakaoLogin(invite?)`는 로그인 UI에서 SDK와 서버 발급 state를 미리 준비하며 세션을 생성하지 않는다. 준비된 state는 메모리에 최대 2분 보관하고 시작 후 폐기한다. `start-kakao-login`의 입력은 `{ redirectTo }`, 성공 출력은 `{ state, redirectUri }`다. 허용된 Origin의 `/login/`과 선택 invite만 허용하며 Origin 위반은 403, 키 실패는 401, 잘못된 복귀 주소는 400, 예상과 다른 upstream 리다이렉트는 502다. 공급자 state와 callback은 로그·영구 저장소에 남기지 않는다. 모든 사용자 표시 실패는 기존 `AppError` 안내로 처리한다.
+
 `signInWithKakao(invite?)`는 현재 세션이 없을 때 웹 OAuth 이동을 시작하며 세션 자체를 반환하지 않는다. 로그인 완료는 기존 `AuthProvider`의 URL 세션 복원과 상태 전환으로 판단한다. 현재 세션이 있으면 `CONFLICT`, 세션 조회/시작 실패는 `INVALID_INPUT`(429는 `RATE_LIMITED`), 설정 누락은 `SUPABASE_NOT_CONFIGURED`다. 로그인 전 기기 푸시 등록 해제가 실패하면 OAuth를 시작하지 않는다. 콜백 오류는 원문 대신 재시도 안내를 표시한다. Capacitor에서는 `INVALID_INPUT`으로 웹 이용을 안내하며 네이티브 딥링크 인증은 아직 제공하지 않는다.
 
 카카오 가입은 이메일을 요구하지 않는다. 닉네임 제공 시 최대 40자로 초기화하며 미동의·누락이면 `레몬 친구`, 시간대 누락 시 `Asia/Seoul`을 사용한다. 이 초기화 경로는 서버 `raw_app_meta_data.provider`가 kakao일 때만 적용하며 사용자 metadata의 provider 값으로 선택할 수 없다. 이메일 가입의 닉네임·IANA 시간대 필수 검증은 유지한다. 로그인 반복 시 기존 프로필·시간대·펫을 다시 만들거나 초기화하지 않는다. 이메일 계정 연결·병합은 이 서비스 범위에 없다.

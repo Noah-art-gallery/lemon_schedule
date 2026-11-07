@@ -14,7 +14,10 @@ const { replace, authState, disableNativePush, signInWithKakao } = vi.hoisted(()
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
 vi.mock("./auth-provider", () => ({ useAuth: () => ({ status: authState.status }) }));
 vi.mock("@/features/push/push-service", () => ({ disableNativePush }));
-vi.mock("./auth-service", () => ({ signInWithKakao }));
+vi.mock("./auth-service", () => ({
+  signInWithKakao,
+  warmKakaoLogin: vi.fn().mockResolvedValue(undefined),
+}));
 
 describe("카카오 전용 로그인", () => {
   beforeEach(() => {

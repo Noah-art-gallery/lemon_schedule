@@ -1,5 +1,15 @@
 # 실행과 배포
 
+## 카카오톡 앱 우선 인증 (2026-11-07)
+
+카카오 JavaScript 키에 운영 도메인 `https://lemon-schedule.vercel.app`, 개발 도메인 `http://localhost:3000`, `http://127.0.0.1:3010`과 기존 Supabase callback을 등록했다. 공개 키는 `.env.local`과 Vercel production의 `NEXT_PUBLIC_KAKAO_JAVASCRIPT_KEY`에 저장하고 Client Secret은 기존처럼 Supabase provider 설정에만 둔다. SDK 2.8.4는 공식 CDN의 고정 버전과 SHA-384 integrity로 로드한다.
+
+`start-kakao-login`은 공개 키와 Origin·복귀 주소를 확인한 뒤 Supabase Auth가 발급한 OAuth state만 중계한다. JavaScript SDK는 이 state와 Supabase callback으로 `throughTalk: true` 로그인을 시작한다. 카카오톡 미설치 환경은 SDK의 웹 로그인을 사용하고 SDK 준비 실패 시 기존 REST 로그인으로 전환한다. 로그인 화면 진입·창 재활성화 시 미리 준비하며 state를 영구 저장하지 않는다. Edge Function은 `verify_jwt=false`이지만 프로젝트 공개 키를 함수 내부에서 검증하고 서비스 역할 키를 사용하지 않는다.
+
+운영 Edge Function v1에서 정상 요청 200, 외부 Origin 403, 다른 사이트 복귀 주소 400, 잘못된 키 401을 확인했다. 로컬 실제 계정에서 SDK 2.8.4 초기화·throughTalk=true·닉네임 scope·Supabase state 전달 후 홈 복귀가 성공했다. 이 PC 브라우저 검증은 Android/iOS에 설치된 카카오톡 앱의 실제 실행·복귀 검증을 대체하지 않는다. [공식 간편로그인 문서](https://developers.kakao.com/docs/latest/ko/kakaologin/js), [SDK 레퍼런스](https://developers.kakao.com/sdk/reference/js/release/Kakao.Auth.html#.authorize).
+
+사용자 요청에 따라 코드 `ec2407f`를 Vercel production에 배포했다(`dpl_FrJzzuLu8SQa8TQFPsr1t5oxWcks`). 운영 브라우저에서도 SDK를 사용한 실제 로그인 왕복이 성공했고, 로컬에서는 SDK 실행 실패 후 기존 REST 로그인 성공도 확인했다. Supabase Email provider 비활성화는 유지한다. Preview 도메인은 카카오 JS 도메인 목록에 포함하지 않으므로 공개 JavaScript 키가 없는 preview는 기존 REST fallback을 사용한다.
+
 ## 카카오 전용 화면 전환 (2026-11-07)
 
 로그인 화면은 `카카오로 시작하기` 버튼 하나이며 첫 인증에서 가입도 함께 처리한다. 이메일·비밀번호 폼, 별도 회원가입 링크와 이메일 인증 서비스는 제거했다. 기존 `/signup/?invite=...`는 `/login/?invite=...`으로 보내고 새 프로필 초대 링크도 로그인 주소를 사용한다. 로컬 `auth.email.enable_signup`은 false다. 개발 데모에서는 실제 카카오 버튼을 비활성화한다.

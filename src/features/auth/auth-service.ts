@@ -4,6 +4,7 @@ import { z } from "zod";
 import { withPushAccountCleanup } from "@/features/push/push-service";
 import { AppError } from "@/lib/errors";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { prepareKakaoTalkLogin, startKakaoTalkLogin } from "./kakao-talk";
 
 function validate<T>(schema: z.ZodType<T>, input: unknown): T {
   const result = schema.safeParse(input);
@@ -39,6 +40,7 @@ export async function signInWithKakao(invite?: string): Promise<void> {
     throw new AppError("CONFLICT", "다른 계정으로 로그인하려면 먼저 로그아웃해 주세요.");
   const redirect = new URL("/login/", window.location.origin);
   if (inviteCode) redirect.searchParams.set("invite", inviteCode);
+  if (await startKakaoTalkLogin(redirect.toString())) return;
   const { error } = await client.auth.signInWithOAuth({
     provider: "kakao",
     // `scopes` appends to Supabase's Kakao defaults (which include email/photo).
@@ -51,4 +53,15 @@ export async function signInWithKakao(invite?: string): Promise<void> {
       "카카오 로그인을 시작하지 못했어요. 잠시 뒤 다시 시도해 주세요.",
     );
   }
+}
+
+export async function warmKakaoLogin(invite?: string): Promise<void> {
+  if (Capacitor.isNativePlatform()) return;
+  const inviteCode = validate(
+    z.string().trim().max(128, "초대 코드를 확인해 주세요.").optional(),
+    invite,
+  );
+  const redirect = new URL("/login/", window.location.origin);
+  if (inviteCode) redirect.searchParams.set("invite", inviteCode);
+  await prepareKakaoTalkLogin(redirect.toString());
 }

@@ -389,6 +389,10 @@ deno_version = 2
 [functions.send-completion-push]
 verify_jwt = false
 
+[functions.start-kakao-login]
+# Anonymous OAuth start: the handler validates the caller's project publishable key.
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
